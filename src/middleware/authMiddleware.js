@@ -39,9 +39,11 @@ const authMiddleware = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // Busca usuário completo do banco de dados (inclui clínica para tipoPessoa)
+    console.log('[AUTH] Buscando user:', decoded.userId);
     const user = await User.findByPk(decoded.userId, {
       include: [{ model: Clinica, as: 'clinica', attributes: ['tipoPessoa'] }]
     });
+    console.log('[AUTH] User encontrado:', !!user);
 
     if (!user || !user.ativo) {
       res.setHeader('Content-Type', 'application/json');
