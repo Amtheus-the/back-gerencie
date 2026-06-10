@@ -36,7 +36,11 @@ const Paciente = sequelize.define('Paciente', {
     type: DataTypes.STRING,
     allowNull: true,
     validate: {
-      isEmail: true
+      isEmailOrEmpty(value) {
+        if (value && value.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          throw new Error('E-mail inválido');
+        }
+      }
     }
   },
   telefone: {
