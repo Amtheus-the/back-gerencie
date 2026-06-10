@@ -13,8 +13,10 @@ const sequelize = require('sequelize');
  */
 exports.getMetricas = async (req, res) => {
   try {
+    console.log('[DASHBOARD] getMetricas iniciado');
     const userId = req.user.id;
     const clinicaId = req.user.clinicaId;
+    console.log('[DASHBOARD] clinicaId:', clinicaId);
     const { mes, ano } = req.query;
 
     // Se não informar mês/ano, usa o mês atual
@@ -22,6 +24,7 @@ exports.getMetricas = async (req, res) => {
     const mesConsulta = mes || (dataAtual.getMonth() + 1);
     const anoConsulta = ano || dataAtual.getFullYear();
 
+    console.log('[DASHBOARD] buscando aniversariantes...');
     // === ANIVERSARIANTES DO MÊS ===
     const aniversariantesMes = await Paciente.findAll({
       where: {
@@ -39,6 +42,7 @@ exports.getMetricas = async (req, res) => {
     const dataInicio = new Date(anoConsulta, mesConsulta - 1, 1);
     const dataFim = new Date(anoConsulta, mesConsulta, 0);
 
+    console.log('[DASHBOARD] aniversariantes ok, buscando faturamentos...');
     // Busca faturamentos PF do período
     const faturamentosPF = await Faturamento.findAll({
       where: {
@@ -230,7 +234,7 @@ exports.getMetricas = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Erro ao buscar métricas:', error.message, error.original?.message);
+    console.error('[DASHBOARD] ERRO:', error.message, error.original?.message, error.sql);
     res.status(500).json({
       success: false,
       message: 'Erro ao buscar dados do dashboard'
