@@ -230,7 +230,7 @@ exports.getMetricas = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Erro ao buscar métricas:', error);
+    console.error('Erro ao buscar métricas:', error.message, error.original?.message);
     res.status(500).json({
       success: false,
       message: 'Erro ao buscar dados do dashboard'
