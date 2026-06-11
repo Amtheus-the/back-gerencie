@@ -389,6 +389,9 @@ connectDB().then(async () => {
   // Migrações inline — adiciona colunas novas sem derrubar dados
   try {
     await sequelize.query(`ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS lancamento_feito TINYINT(1) NOT NULL DEFAULT 0`);
+    await sequelize.query(`ALTER TABLE clinicas ADD COLUMN IF NOT EXISTS codigo_servico VARCHAR(20) NULL`);
+    await sequelize.query(`ALTER TABLE clinicas ADD COLUMN IF NOT EXISTS descricao_padrao_nota TEXT NULL`);
+    await sequelize.query(`ALTER TABLE clinicas ADD COLUMN IF NOT EXISTS inscricao_municipal VARCHAR(30) NULL`);
   } catch {}
 
   app.listen(PORT, () => {
