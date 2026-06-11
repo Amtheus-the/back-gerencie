@@ -107,6 +107,24 @@ router.post('/', async (req, res) => {
 });
 
 // Deletar agendamento
+// Atualizar agendamento (drag-and-drop, status, etc.)
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data_hora, status, duracao_minutos, observacoes } = req.body;
+    const agendamento = await Agendamento.findOne({ where: { id, clinica_id: req.user.clinicaId } });
+    if (!agendamento) return res.status(404).json({ message: 'Agendamento não encontrado' });
+    if (data_hora !== undefined) agendamento.dataHora = data_hora;
+    if (status !== undefined) agendamento.status = status;
+    if (duracao_minutos !== undefined) agendamento.duracaoMinutos = duracao_minutos;
+    if (observacoes !== undefined) agendamento.observacoes = observacoes;
+    await agendamento.save();
+    res.json(agendamento);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     const id = req.params.id;
