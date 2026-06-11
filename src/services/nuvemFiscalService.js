@@ -7,6 +7,7 @@ async function getNuvemFiscalToken() {
 
   console.log('🔐 [NuvemFiscal] Iniciando autenticação...');
   console.log('🔑 CLIENT_ID:', clientId ? `"${clientId}"` : '❌ VAZIO');
+  console.log('🔑 CLIENT_SECRET (primeiros 6):', clientSecret ? `"${clientSecret.slice(0, 6)}..." (len=${clientSecret.length})` : '❌ VAZIO');
   console.log('🌐 URL do token:', tokenUrl);
 
   const params = new URLSearchParams();
