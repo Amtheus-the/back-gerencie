@@ -69,7 +69,11 @@ const Clinica = sequelize.define('Clinica', {
     type: DataTypes.STRING(255),
     allowNull: true,
     validate: {
-      isEmail: true
+      isEmailOrEmpty(value) {
+        if (value && value.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          throw new Error('E-mail inválido');
+        }
+      }
     },
     comment: 'Email da clínica (pode ser diferente dos usuários)'
   },
