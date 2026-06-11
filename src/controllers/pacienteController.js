@@ -139,7 +139,11 @@ class PacienteController {
         return res.status(404).json({ message: 'Paciente não encontrado' });
       }
 
-      await paciente.update(req.body);
+      // Remove null/undefined para não sobrescrever NOT NULL columns
+      const dados = Object.fromEntries(
+        Object.entries(req.body).filter(([, v]) => v !== null && v !== undefined)
+      );
+      await paciente.update(dados);
 
       return res.json(paciente);
     } catch (error) {
