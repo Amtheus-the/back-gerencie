@@ -114,9 +114,9 @@ router.put('/:id', async (req, res) => {
     const { data_hora, status, duracao_minutos, observacoes } = req.body;
     const agendamento = await Agendamento.findOne({ where: { id, clinica_id: req.user.clinicaId } });
     if (!agendamento) return res.status(404).json({ message: 'Agendamento não encontrado' });
-    if (data_hora !== undefined) agendamento.dataHora = data_hora;
+    if (data_hora !== undefined) agendamento.data_hora = data_hora;
     if (status !== undefined) agendamento.status = status;
-    if (duracao_minutos !== undefined) agendamento.duracaoMinutos = duracao_minutos;
+    if (duracao_minutos !== undefined) agendamento.duracao_minutos = duracao_minutos;
     if (observacoes !== undefined) agendamento.observacoes = observacoes;
     await agendamento.save();
     res.json(agendamento);
