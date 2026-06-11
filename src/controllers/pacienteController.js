@@ -173,7 +173,11 @@ class PacienteController {
       return res.json({ message: 'Paciente removido com sucesso' });
     } catch (error) {
       console.error('Erro ao deletar paciente:', error);
-      return res.status(500).json({ 
+      const isForeignKey = error.name === 'SequelizeForeignKeyConstraintError' || error.message?.includes('foreign key');
+      if (isForeignKey) {
+        return res.status(409).json({ message: 'Não é possível excluir este paciente pois ele possui agendamentos ou faturamentos vinculados.' });
+      }
+      return res.status(500).json({
         message: 'Erro ao deletar paciente',
         error: error.message 
       });
