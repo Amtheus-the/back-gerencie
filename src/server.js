@@ -385,7 +385,12 @@ app.get('/', async (req, res) => {
 const PORT = process.env.PORT || 5000;
 
 // Conecta ao banco de dados e inicia o servidor
-connectDB().then(() => {
+connectDB().then(async () => {
+  // Migrações inline — adiciona colunas novas sem derrubar dados
+  try {
+    await sequelize.query(`ALTER TABLE agendamentos ADD COLUMN IF NOT EXISTS lancamento_feito TINYINT(1) NOT NULL DEFAULT 0`);
+  } catch {}
+
   app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
     console.log(`🚀 [v2] Backend atualizado — PIX + assinaturas recorrentes ativo`);

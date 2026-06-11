@@ -38,6 +38,11 @@ const Agendamento = sequelize.define('Agendamento', {
   observacoes: {
     type: DataTypes.TEXT,
     allowNull: true
+  },
+  lancamento_feito: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false
   }
 }, {
   tableName: 'agendamentos',
