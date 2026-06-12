@@ -674,29 +674,32 @@ exports.getInsights = async (req, res) => {
     const inicioMesAnt = new Date(anoAnt, mesAnt - 1, 1);
     const fimMesAnt = new Date(anoAnt, mesAnt, 0);
 
-    // Busca dados financeiros dos dois meses
-    const [fatAtual, despAtual, fatAnt, despAnt, clinica] = await Promise.all([
-      Faturamento.findAll({ where: { clinicaId, data: { [Op.between]: [inicioMesAtual, fimMesAtual] } } }),
+    // Busca dados financeiros dos dois meses (PF only para DARF, igual ao dashboard)
+    const [fatPFAtual, fatPJAtual, despAtual, fatPFAnt, fatPJAnt, despAnt, clinica] = await Promise.all([
+      Faturamento.findAll({ where: { clinicaId, tipoPessoa: 'PF', data: { [Op.between]: [inicioMesAtual, fimMesAtual] } } }),
+      Faturamento.findAll({ where: { clinicaId, tipoPessoa: 'PJ', data: { [Op.between]: [inicioMesAtual, fimMesAtual] } } }),
       Despesa.findAll({ where: { clinicaId, data: { [Op.between]: [inicioMesAtual, fimMesAtual] } } }),
-      Faturamento.findAll({ where: { clinicaId, data: { [Op.between]: [inicioMesAnt, fimMesAnt] } } }),
+      Faturamento.findAll({ where: { clinicaId, tipoPessoa: 'PF', data: { [Op.between]: [inicioMesAnt, fimMesAnt] } } }),
+      Faturamento.findAll({ where: { clinicaId, tipoPessoa: 'PJ', data: { [Op.between]: [inicioMesAnt, fimMesAnt] } } }),
       Despesa.findAll({ where: { clinicaId, data: { [Op.between]: [inicioMesAnt, fimMesAnt] } } }),
       Clinica.findByPk(clinicaId, { attributes: ['nome', 'tipoPessoa'] })
     ]);
 
-    const totalFatAtual = fatAtual.reduce((s, f) => s + parseFloat(f.valor), 0);
+    const totalFatAtual = fatPFAtual.reduce((s, f) => s + parseFloat(f.valor), 0);
+    const totalFatPJAtual = fatPJAtual.reduce((s, f) => s + parseFloat(f.valor), 0);
     const totalDespAtual = despAtual.reduce((s, d) => s + parseFloat(d.valor), 0);
-    const totalFatAnt = fatAnt.reduce((s, f) => s + parseFloat(f.valor), 0);
+    const totalFatAnt = fatPFAnt.reduce((s, f) => s + parseFloat(f.valor), 0) + fatPJAnt.reduce((s, f) => s + parseFloat(f.valor), 0);
     const totalDespAnt = despAnt.reduce((s, d) => s + parseFloat(d.valor), 0);
 
     const tipoPessoa = clinica?.tipoPessoa || 'PF';
     const nomeClinica = clinica?.nome || '';
     const nomeDentista = req.user.nome || '';
 
-    // Calcula imposto estimado mês atual (PF)
+    // Calcula DARF igual ao dashboard (só rendimentos PF - despesas)
     const baseCalculo = Math.max(0, totalFatAtual - totalDespAtual);
     const darfAtual = calcularIRPF(baseCalculo);
 
-    // Calcula quanto economizaria como PJ
+    // DAS estimado se fosse PJ (usa total PF como base para comparação)
     const rbt12Est = totalFatAtual * 12;
     const dasAtual = calcularDASSimples(totalFatAtual, rbt12Est);
 
