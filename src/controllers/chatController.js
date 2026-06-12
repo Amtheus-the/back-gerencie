@@ -685,21 +685,25 @@ exports.getInsights = async (req, res) => {
       Clinica.findByPk(clinicaId, { attributes: ['nome', 'tipoPessoa'] })
     ]);
 
-    const totalFatAtual = fatPFAtual.reduce((s, f) => s + parseFloat(f.valor), 0);
+    const totalFatPFAtual = fatPFAtual.reduce((s, f) => s + parseFloat(f.valor), 0);
     const totalFatPJAtual = fatPJAtual.reduce((s, f) => s + parseFloat(f.valor), 0);
     const totalDespAtual = despAtual.reduce((s, d) => s + parseFloat(d.valor), 0);
-    const totalFatAnt = fatPFAnt.reduce((s, f) => s + parseFloat(f.valor), 0) + fatPJAnt.reduce((s, f) => s + parseFloat(f.valor), 0);
+    const totalFatPFAnt = fatPFAnt.reduce((s, f) => s + parseFloat(f.valor), 0);
+    const totalFatPJAnt = fatPJAnt.reduce((s, f) => s + parseFloat(f.valor), 0);
     const totalDespAnt = despAnt.reduce((s, d) => s + parseFloat(d.valor), 0);
 
     const tipoPessoa = clinica?.tipoPessoa || 'PF';
     const nomeClinica = clinica?.nome || '';
     const nomeDentista = req.user.nome || '';
 
-    // Calcula DARF igual ao dashboard (só rendimentos PF - despesas)
-    const baseCalculo = Math.max(0, totalFatAtual - totalDespAtual);
-    const darfAtual = calcularIRPF(baseCalculo);
+    // Faturamento do regime atual
+    const totalFatAtual = tipoPessoa === 'PJ' ? totalFatPJAtual : totalFatPFAtual;
+    const totalFatAnt = tipoPessoa === 'PJ' ? totalFatPJAnt : totalFatPFAnt;
 
-    // DAS estimado se fosse PJ (usa total PF como base para comparação)
+    // Calcula imposto do regime atual e alternativo
+    const baseCalculoPF = Math.max(0, totalFatPFAtual - totalDespAtual);
+    const darfAtual = calcularIRPF(baseCalculoPF > 0 ? baseCalculoPF : Math.max(0, totalFatAtual - totalDespAtual));
+
     const rbt12Est = totalFatAtual * 12;
     const dasAtual = calcularDASSimples(totalFatAtual, rbt12Est);
 
