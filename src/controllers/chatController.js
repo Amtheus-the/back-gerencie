@@ -709,42 +709,50 @@ exports.getInsights = async (req, res) => {
 
     const variacao = totalFatAnt > 0 ? ((totalFatAtual - totalFatAnt) / totalFatAnt * 100) : null;
 
+    const impostoAtual = tipoPessoa === 'PJ' ? dasAtual : darfAtual;
+    const impostoAlternativo = tipoPessoa === 'PJ' ? darfAtual : dasAtual;
+    const regimeAlternativo = tipoPessoa === 'PJ' ? 'PF' : 'PJ';
+    const impostoNome = tipoPessoa === 'PJ' ? 'DAS (Simples Nacional)' : 'DARF (Carnê-Leão)';
+
     const contexto = `
 Dados financeiros reais do dentista (${nomeDentista}):
 
 📅 MÊS ATUAL (${nomeMesAtual}/${anoAtual}):
+- Regime atual: ${tipoPessoa}
 - Faturamento: R$ ${totalFatAtual.toFixed(2)}
 - Despesas lançadas: R$ ${totalDespAtual.toFixed(2)}
-- DARF estimado (PF): R$ ${darfAtual.toFixed(2)}
-- DAS estimado se fosse PJ: R$ ${dasAtual.toFixed(2)}
+- Imposto atual (${impostoNome}): R$ ${impostoAtual.toFixed(2)}
+- Imposto estimado se migrasse para ${regimeAlternativo}: R$ ${impostoAlternativo.toFixed(2)}
 
 📅 MÊS ANTERIOR (${nomeMesAnt}/${anoAnt}):
 - Faturamento: R$ ${totalFatAnt.toFixed(2)}
 - Despesas: R$ ${totalDespAnt.toFixed(2)}
 
-📊 VARIAÇÃO: ${variacao !== null ? (variacao >= 0 ? '+' : '') + variacao.toFixed(1) + '%' : 'sem dados anteriores'}
-🏷️ REGIME ATUAL: ${tipoPessoa}
+📊 VARIAÇÃO DO FATURAMENTO: ${variacao !== null ? (variacao >= 0 ? '+' : '') + variacao.toFixed(1) + '%' : 'sem dados anteriores'}
 `;
 
     const promptInsight = `
-Você é a Aline, assessora tributária da clínica odontológica. Com base nos dados reais abaixo, gere UMA mensagem proativa, curta (máx 5 linhas), calorosa e útil para o dentista, como se fosse uma assessora de confiança mandando um aviso matinal.
+Você é a Aline, assessora tributária da clínica odontológica. Com base nos dados reais abaixo, gere UMA mensagem proativa, curta, calorosa e útil para o dentista.
 
 ${contexto}
 
-REGRAS:
-- Seja direta, use os números reais
-- Se DARF for alto e despesas baixas, alerte sobre isso e sugira lançar despesas ou considerar PJ
-- Se faturamento cresceu, celebre e avise sobre impacto fiscal
-- Se faturamento caiu, seja empática
-- Se já é PF com DARF > R$ 500, mencione comparação com PJ
-- Use emojis com moderação
+REGRAS OBRIGATÓRIAS:
+- Use os números reais, nunca invente valores
+- Máximo 2 linhas
 - NÃO faça perguntas, apenas informe/aconselhe
 - Não se apresente, vá direto ao ponto
-- Máximo 2 linhas, seja direto e impactante
-- REGRA CRÍTICA: só recomende PJ se DAS < DARF. Se DARF < DAS, diga que PF está sendo mais vantajoso
-- REGRA CRÍTICA: nunca diga que um valor MAIOR é uma redução. Confira os números antes de afirmar qualquer economia
-- Exemplo CORRETO (DAS menor): "Faturamento em alta! Seu DARF como PF é R$484, mas como PJ seria apenas R$280 de DAS. Vale muito considerar a migração! 💡"
-- Exemplo CORRETO (DARF menor): "Faturamento crescendo! Seu DARF de R$68 ainda é menor que o DAS estimado de R$480 como PJ. Continue como PF por enquanto! 👍"
+- Use emojis com moderação
+
+REGRAS POR REGIME:
+- Se regime atual é PJ: fale sobre o DAS do mês, variação do faturamento, e se vale a pena manter PJ comparando com PF
+- Se regime atual é PF: fale sobre o DARF, despesas dedutíveis, e compare com PJ apenas se DAS < DARF
+- NUNCA sugira migrar para um regime onde o imposto é MAIOR
+- NUNCA confunda DARF com DAS
+
+EXEMPLOS CORRETOS:
+- PJ com bom faturamento: "Junho fechou bem! Seu DAS estimado é R$480 no Simples. Faturamento cresceu 30% — continue assim! 💪"
+- PJ com faturamento zerado: "Junho sem faturamento lançado, Anderson. Não esqueça de registrar seus recebimentos para o DAS ficar correto! 📋"
+- PF com DARF alto: "Atenção! DARF de R$900 este mês. Lançar mais despesas dedutíveis pode reduzir esse valor. 💡"
 `;
 
     const completion = await openai.chat.completions.create({
