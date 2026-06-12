@@ -741,7 +741,10 @@ REGRAS:
 - NÃO faça perguntas, apenas informe/aconselhe
 - Não se apresente, vá direto ao ponto
 - Máximo 2 linhas, seja direto e impactante
-- Exemplo bom: "Seu faturamento cresceu 376% em junho! Com DARF de R$484, migrar para PJ reduziria para R$487 de DAS. Vale analisar! 💡"
+- REGRA CRÍTICA: só recomende PJ se DAS < DARF. Se DARF < DAS, diga que PF está sendo mais vantajoso
+- REGRA CRÍTICA: nunca diga que um valor MAIOR é uma redução. Confira os números antes de afirmar qualquer economia
+- Exemplo CORRETO (DAS menor): "Faturamento em alta! Seu DARF como PF é R$484, mas como PJ seria apenas R$280 de DAS. Vale muito considerar a migração! 💡"
+- Exemplo CORRETO (DARF menor): "Faturamento crescendo! Seu DARF de R$68 ainda é menor que o DAS estimado de R$480 como PJ. Continue como PF por enquanto! 👍"
 `;
 
     const completion = await openai.chat.completions.create({
