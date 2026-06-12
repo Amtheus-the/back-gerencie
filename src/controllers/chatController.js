@@ -696,38 +696,50 @@ exports.getInsights = async (req, res) => {
     const nomeClinica = clinica?.nome || '';
     const nomeDentista = req.user.nome || '';
 
-    // Faturamento do regime atual
-    const totalFatAtual = tipoPessoa === 'PJ' ? totalFatPJAtual : totalFatPFAtual;
-    const totalFatAnt = tipoPessoa === 'PJ' ? totalFatPJAnt : totalFatPFAnt;
+    // Faturamento total do mês (todos os regimes)
+    const totalFatAtual = totalFatPFAtual + totalFatPJAtual;
+    const totalFatAnt = totalFatPFAnt + totalFatPJAnt;
 
-    // Calcula imposto do regime atual e alternativo
+    // DARF (sempre sobre rendimentos PF - despesas)
     const baseCalculoPF = Math.max(0, totalFatPFAtual - totalDespAtual);
-    const darfAtual = calcularIRPF(baseCalculoPF > 0 ? baseCalculoPF : Math.max(0, totalFatAtual - totalDespAtual));
+    const darfAtual = calcularIRPF(baseCalculoPF);
 
-    const rbt12Est = totalFatAtual * 12;
-    const dasAtual = calcularDASSimples(totalFatAtual, rbt12Est);
+    // DAS (sempre sobre faturamento PJ)
+    const rbt12Est = totalFatPJAtual * 12;
+    const dasAtual = calcularDASSimples(totalFatPJAtual, rbt12Est);
 
     const mesesPt = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     const nomeMesAtual = mesesPt[mesAtual - 1];
     const nomeMesAnt = mesesPt[mesAnt - 1];
 
-    const variacao = totalFatAnt > 0 ? ((totalFatAtual - totalFatAnt) / totalFatAnt * 100) : null;
 
-    const impostoAtual = tipoPessoa === 'PJ' ? dasAtual : darfAtual;
-    const impostoAlternativo = tipoPessoa === 'PJ' ? darfAtual : dasAtual;
-    const regimeAlternativo = tipoPessoa === 'PJ' ? 'PF' : 'PJ';
-    const impostoNome = tipoPessoa === 'PJ' ? 'DAS (Simples Nacional)' : 'DARF (Carnê-Leão)';
 
-    const contexto = `
+    let contexto = `
 Dados financeiros reais do dentista (${nomeDentista}):
 
 📅 MÊS ATUAL (${nomeMesAtual}/${anoAtual}):
 - Regime atual: ${tipoPessoa}
-- Faturamento: R$ ${totalFatAtual.toFixed(2)}
+- Faturamento total: R$ ${totalFatAtual.toFixed(2)}
 - Despesas lançadas: R$ ${totalDespAtual.toFixed(2)}
-- Imposto atual (${impostoNome}): R$ ${impostoAtual.toFixed(2)}
-- Imposto estimado se migrasse para ${regimeAlternativo}: R$ ${impostoAlternativo.toFixed(2)}
+`;
 
+    if (tipoPessoa === 'HIBRIDO') {
+      contexto += `- Faturamento PF (Carnê-Leão): R$ ${totalFatPFAtual.toFixed(2)}
+- DARF estimado (PF): R$ ${darfAtual.toFixed(2)}
+- Faturamento PJ (Simples Nacional): R$ ${totalFatPJAtual.toFixed(2)}
+- DAS estimado (PJ): R$ ${dasAtual.toFixed(2)}
+`;
+    } else if (tipoPessoa === 'PJ') {
+      contexto += `- DAS estimado (Simples Nacional): R$ ${dasAtual.toFixed(2)}
+- DARF estimado se fosse PF: R$ ${darfAtual.toFixed(2)}
+`;
+    } else {
+      contexto += `- DARF estimado (Carnê-Leão): R$ ${darfAtual.toFixed(2)}
+- DAS estimado se fosse PJ: R$ ${dasAtual.toFixed(2)}
+`;
+    }
+
+    contexto += `
 📅 MÊS ANTERIOR (${nomeMesAnt}/${anoAnt}):
 - Faturamento: R$ ${totalFatAnt.toFixed(2)}
 - Despesas: R$ ${totalDespAnt.toFixed(2)}
@@ -748,15 +760,16 @@ REGRAS OBRIGATÓRIAS:
 - Use emojis com moderação
 
 REGRAS POR REGIME:
-- Se regime atual é PJ: fale sobre o DAS do mês, variação do faturamento, e se vale a pena manter PJ comparando com PF
 - Se regime atual é PF: fale sobre o DARF, despesas dedutíveis, e compare com PJ apenas se DAS < DARF
+- Se regime atual é PJ: fale sobre o DAS do mês e variação do faturamento
+- Se regime atual é HIBRIDO: mencione AMBOS os impostos (DARF do PF e DAS do PJ), elogie a estratégia e dê dica de otimização
 - NUNCA sugira migrar para um regime onde o imposto é MAIOR
 - NUNCA confunda DARF com DAS
 
 EXEMPLOS CORRETOS:
-- PJ com bom faturamento: "Junho fechou bem! Seu DAS estimado é R$480 no Simples. Faturamento cresceu 30% — continue assim! 💪"
-- PJ com faturamento zerado: "Junho sem faturamento lançado, Anderson. Não esqueça de registrar seus recebimentos para o DAS ficar correto! 📋"
 - PF com DARF alto: "Atenção! DARF de R$900 este mês. Lançar mais despesas dedutíveis pode reduzir esse valor. 💡"
+- PJ com bom faturamento: "Junho fechou bem! DAS de R$300 no Simples. Faturamento cresceu 30% — continue assim! 💪"
+- HÍBRIDO: "Ótima estratégia híbrida! DARF de R$68 no PF e DAS de R$300 no PJ este mês. Total de impostos: R$368. 📊"
 `;
 
     const completion = await openai.chat.completions.create({
