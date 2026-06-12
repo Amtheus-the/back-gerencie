@@ -53,6 +53,11 @@ const Despesa = sequelize.define('Despesa', {
     defaultValue: false,
     comment: 'Indica se a despesa é dedutível do IR'
   },
+  usadoCarneLeao: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Indica se a despesa foi usada no Carnê-Leão'
+  },
   planoContaId: {
     type: DataTypes.UUID,
     allowNull: true,

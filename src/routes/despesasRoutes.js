@@ -39,6 +39,13 @@ router.get('/:id', despesasController.buscarDespesa);
 router.put('/:id', despesasController.atualizarDespesa);
 
 /**
+ * @route   PATCH /api/despesas/:id/carne-leao
+ * @desc    Marca/desmarca despesa como usada no Carnê-Leão
+ * @access  Private
+ */
+router.patch('/:id/carne-leao', despesasController.toggleCarneLeao);
+
+/**
  * @route   DELETE /api/despesas/:id
  * @desc    Remove uma despesa
  * @access  Private

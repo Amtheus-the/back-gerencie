@@ -160,3 +160,30 @@ exports.deletarDespesa = async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao deletar despesa' });
   }
 };
+
+/**
+ * Toggle usado_carne_leao
+ */
+exports.toggleCarneLeao = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { sequelize } = require('../config/database');
+
+    const [rows] = await sequelize.query(
+      `SELECT id, usado_carne_leao FROM despesas WHERE id = ? LIMIT 1`,
+      { replacements: [id] }
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Despesa não encontrada' });
+
+    const novoValor = rows[0].usado_carne_leao ? 0 : 1;
+    await sequelize.query(
+      `UPDATE despesas SET usado_carne_leao = ? WHERE id = ?`,
+      { replacements: [novoValor, id] }
+    );
+
+    res.json({ success: true, usado_carne_leao: Boolean(novoValor) });
+  } catch (error) {
+    console.error('Erro ao toggle carnê-leão:', error);
+    res.status(500).json({ success: false, message: 'Erro ao atualizar' });
+  }
+};
