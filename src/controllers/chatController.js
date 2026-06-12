@@ -740,7 +740,8 @@ REGRAS:
 - Use emojis com moderação
 - NÃO faça perguntas, apenas informe/aconselhe
 - Não se apresente, vá direto ao ponto
-- Máximo 5 linhas
+- Máximo 2 linhas, seja direto e impactante
+- Exemplo bom: "Seu faturamento cresceu 376% em junho! Com DARF de R$484, migrar para PJ reduziria para R$487 de DAS. Vale analisar! 💡"
 `;
 
     const completion = await openai.chat.completions.create({
