@@ -1,4 +1,5 @@
 require('dotenv').config();
+process.env.DB_HOST = 'srv1722.hstgr.io'; // força conexão remota
 const bcrypt = require('bcryptjs');
 const { sequelize } = require('../src/models');
 const { v4: uuidv4 } = require('uuid');

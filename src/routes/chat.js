@@ -10,6 +10,9 @@ const { verificarToken } = require('../middleware/authMiddleware');
 // Todas as rotas requerem autenticação
 router.use(verificarToken);
 
+// GET /api/chat/insights - Insight proativo da Aline baseado nos dados financeiros reais
+router.get('/insights', chatController.getInsights);
+
 // POST /api/chat/message - Envia mensagem para a Aline
 router.post('/message', chatController.sendMessage);
 

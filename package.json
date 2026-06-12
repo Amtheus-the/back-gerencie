@@ -33,6 +33,7 @@
     "sequelize": "^6.35.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.1",
+    "pg": "^8.21.0"
   }
 }

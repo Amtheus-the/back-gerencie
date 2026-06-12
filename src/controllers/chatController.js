@@ -652,4 +652,121 @@ Seja direto, didático e use emojis para tornar a resposta mais amigável.`;
   }
 };
 
+/**
+ * Gera insight proativo da Aline baseado nos dados financeiros reais do dentista
+ */
+exports.getInsights = async (req, res) => {
+  try {
+    const { Faturamento, Despesa, Clinica } = require('../models');
+    const { Op } = require('sequelize');
+
+    const clinicaId = req.user.clinicaId;
+    const now = new Date();
+    const mesAtual = now.getMonth() + 1;
+    const anoAtual = now.getFullYear();
+
+    // Mês anterior
+    const mesAnt = mesAtual === 1 ? 12 : mesAtual - 1;
+    const anoAnt = mesAtual === 1 ? anoAtual - 1 : anoAtual;
+
+    const inicioMesAtual = new Date(anoAtual, mesAtual - 1, 1);
+    const fimMesAtual = new Date(anoAtual, mesAtual, 0);
+    const inicioMesAnt = new Date(anoAnt, mesAnt - 1, 1);
+    const fimMesAnt = new Date(anoAnt, mesAnt, 0);
+
+    // Busca dados financeiros dos dois meses
+    const [fatAtual, despAtual, fatAnt, despAnt, clinica] = await Promise.all([
+      Faturamento.findAll({ where: { clinicaId, data: { [Op.between]: [inicioMesAtual, fimMesAtual] } } }),
+      Despesa.findAll({ where: { clinicaId, data: { [Op.between]: [inicioMesAtual, fimMesAtual] } } }),
+      Faturamento.findAll({ where: { clinicaId, data: { [Op.between]: [inicioMesAnt, fimMesAnt] } } }),
+      Despesa.findAll({ where: { clinicaId, data: { [Op.between]: [inicioMesAnt, fimMesAnt] } } }),
+      Clinica.findByPk(clinicaId, { attributes: ['nome', 'tipoPessoa'] })
+    ]);
+
+    const totalFatAtual = fatAtual.reduce((s, f) => s + parseFloat(f.valor), 0);
+    const totalDespAtual = despAtual.reduce((s, d) => s + parseFloat(d.valor), 0);
+    const totalFatAnt = fatAnt.reduce((s, f) => s + parseFloat(f.valor), 0);
+    const totalDespAnt = despAnt.reduce((s, d) => s + parseFloat(d.valor), 0);
+
+    const tipoPessoa = clinica?.tipoPessoa || 'PF';
+    const nomeClinica = clinica?.nome || '';
+    const nomeDentista = req.user.nome || '';
+
+    // Calcula imposto estimado mês atual (PF)
+    const baseCalculo = Math.max(0, totalFatAtual - totalDespAtual);
+    const darfAtual = calcularIRPF(baseCalculo);
+
+    // Calcula quanto economizaria como PJ
+    const rbt12Est = totalFatAtual * 12;
+    const dasAtual = calcularDASSimples(totalFatAtual, rbt12Est);
+
+    const mesesPt = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    const nomeMesAtual = mesesPt[mesAtual - 1];
+    const nomeMesAnt = mesesPt[mesAnt - 1];
+
+    const variacao = totalFatAnt > 0 ? ((totalFatAtual - totalFatAnt) / totalFatAnt * 100) : null;
+
+    const contexto = `
+Dados financeiros reais do dentista (${nomeDentista}):
+
+📅 MÊS ATUAL (${nomeMesAtual}/${anoAtual}):
+- Faturamento: R$ ${totalFatAtual.toFixed(2)}
+- Despesas lançadas: R$ ${totalDespAtual.toFixed(2)}
+- DARF estimado (PF): R$ ${darfAtual.toFixed(2)}
+- DAS estimado se fosse PJ: R$ ${dasAtual.toFixed(2)}
+
+📅 MÊS ANTERIOR (${nomeMesAnt}/${anoAnt}):
+- Faturamento: R$ ${totalFatAnt.toFixed(2)}
+- Despesas: R$ ${totalDespAnt.toFixed(2)}
+
+📊 VARIAÇÃO: ${variacao !== null ? (variacao >= 0 ? '+' : '') + variacao.toFixed(1) + '%' : 'sem dados anteriores'}
+🏷️ REGIME ATUAL: ${tipoPessoa}
+`;
+
+    const promptInsight = `
+Você é a Aline, assessora tributária da clínica odontológica. Com base nos dados reais abaixo, gere UMA mensagem proativa, curta (máx 5 linhas), calorosa e útil para o dentista, como se fosse uma assessora de confiança mandando um aviso matinal.
+
+${contexto}
+
+REGRAS:
+- Seja direta, use os números reais
+- Se DARF for alto e despesas baixas, alerte sobre isso e sugira lançar despesas ou considerar PJ
+- Se faturamento cresceu, celebre e avise sobre impacto fiscal
+- Se faturamento caiu, seja empática
+- Se já é PF com DARF > R$ 500, mencione comparação com PJ
+- Use emojis com moderação
+- NÃO faça perguntas, apenas informe/aconselhe
+- Não se apresente, vá direto ao ponto
+- Máximo 5 linhas
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Você é a Aline, assessora tributária especializada em clínicas odontológicas.' },
+        { role: 'user', content: promptInsight }
+      ],
+      temperature: 0.7,
+      max_tokens: 300
+    });
+
+    res.json({
+      success: true,
+      message: completion.choices[0].message.content,
+      dados: {
+        faturamentoAtual: totalFatAtual,
+        despesasAtual: totalDespAtual,
+        darfAtual,
+        dasAtual,
+        faturamentoAnterior: totalFatAnt,
+        variacao
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ [Insights] Erro:', error.message);
+    res.status(500).json({ success: false, message: 'Erro ao gerar insights' });
+  }
+};
+
 module.exports = exports;
