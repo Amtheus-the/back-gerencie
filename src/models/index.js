@@ -235,6 +235,12 @@ Agendamento.belongsTo(Paciente, {
   as: 'paciente'
 });
 
+// Relacionamento: Agendamento pertence ao usuário que o criou
+Agendamento.belongsTo(User, {
+  foreignKey: 'user_id',
+  as: 'usuario'
+});
+
 // Importar o model Anamnese
 const Anamnese = require('./anamnese');
 

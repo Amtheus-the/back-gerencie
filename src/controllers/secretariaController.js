@@ -14,53 +14,54 @@ const PERMISSOES_PADRAO = {
   clinicaDashboard: false,
 };
 
-// Lista secretarias criadas pelo dentista logado
+// Lista secretarias e dentistas parceiros criados pelo dentista logado
 exports.listar = async (req, res) => {
   try {
-    const secretarias = await User.findAll({
-      where: { criadoPorId: req.user.id, role: 'secretaria' },
-      attributes: ['id', 'nome', 'email', 'ativo', 'permissoes', 'createdAt'],
+    const usuarios = await User.findAll({
+      where: { criadoPorId: req.user.id },
+      attributes: ['id', 'nome', 'email', 'ativo', 'permissoes', 'role', 'cor', 'createdAt'],
     });
-    
-    // Garante que permissões são objetos, não strings JSON
-    const secretariasFormatadas = secretarias.map(s => {
-      const secretariaObj = s.toJSON();
-      if (typeof secretariaObj.permissoes === 'string') {
-        secretariaObj.permissoes = JSON.parse(secretariaObj.permissoes);
+
+    const formatados = usuarios.map(u => {
+      const obj = u.toJSON();
+      if (typeof obj.permissoes === 'string') {
+        obj.permissoes = JSON.parse(obj.permissoes);
       }
-      return secretariaObj;
+      return obj;
     });
-    
-    res.json({ success: true, secretarias: secretariasFormatadas });
+
+    res.json({ success: true, secretarias: formatados });
   } catch (err) {
-    console.error('Erro ao listar secretarias:', err);
-    res.status(500).json({ success: false, message: 'Erro ao listar secretarias' });
+    console.error('Erro ao listar usuários:', err);
+    res.status(500).json({ success: false, message: 'Erro ao listar usuários' });
   }
 };
 
-// Cria uma nova secretaria
+// Cria secretaria ou dentista parceiro
 exports.criar = async (req, res) => {
   try {
-    const { nome, email, senha, permissoes } = req.body;
+    const { nome, email, senha, permissoes, role, cor } = req.body;
 
     if (!nome || !email || !senha) {
       return res.status(400).json({ success: false, message: 'Nome, email e senha são obrigatórios' });
     }
+
+    const tipoValido = ['secretaria', 'dentista_parceiro'].includes(role) ? role : 'secretaria';
 
     const jaExiste = await User.findOne({ where: { email } });
     if (jaExiste) {
       return res.status(400).json({ success: false, message: 'E-mail já cadastrado' });
     }
 
-    // Busca o dentista para pegar clinicaId
     const dentista = await User.findByPk(req.user.id);
 
-    const secretaria = await User.create({
+    const usuario = await User.create({
       nome,
       email,
       senha,
-      role: 'secretaria',
+      role: tipoValido,
       permissoes: permissoes || PERMISSOES_PADRAO,
+      cor: cor || null,
       criadoPorId: req.user.id,
       clinicaId: dentista.clinicaId,
       ativo: true,
@@ -69,65 +70,70 @@ exports.criar = async (req, res) => {
     res.status(201).json({
       success: true,
       secretaria: {
-        id: secretaria.id,
-        nome: secretaria.nome,
-        email: secretaria.email,
-        ativo: secretaria.ativo,
-        permissoes: secretaria.permissoes,
+        id: usuario.id,
+        nome: usuario.nome,
+        email: usuario.email,
+        ativo: usuario.ativo,
+        permissoes: usuario.permissoes,
+        role: usuario.role,
+        cor: usuario.cor,
       },
     });
   } catch (err) {
-    console.error('Erro ao criar secretaria:', err);
-    res.status(500).json({ success: false, message: 'Erro ao criar secretaria' });
+    console.error('Erro ao criar usuário:', err);
+    res.status(500).json({ success: false, message: 'Erro ao criar usuário' });
   }
 };
 
-// Atualiza permissões e dados de uma secretaria
+// Atualiza dados do usuário
 exports.atualizar = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nome, permissoes, ativo, senha } = req.body;
+    const { nome, permissoes, ativo, senha, cor } = req.body;
 
-    const secretaria = await User.findOne({ where: { id, criadoPorId: req.user.id, role: 'secretaria' } });
-    if (!secretaria) {
-      return res.status(404).json({ success: false, message: 'Secretaria não encontrada' });
+    const usuario = await User.findOne({ where: { id, criadoPorId: req.user.id } });
+    if (!usuario) {
+      return res.status(404).json({ success: false, message: 'Usuário não encontrado' });
     }
 
-    if (nome !== undefined) secretaria.nome = nome;
-    if (permissoes !== undefined) secretaria.permissoes = permissoes;
-    if (ativo !== undefined) secretaria.ativo = ativo;
-    if (senha) secretaria.senha = senha;
+    if (nome !== undefined) usuario.nome = nome;
+    if (permissoes !== undefined) usuario.permissoes = permissoes;
+    if (ativo !== undefined) usuario.ativo = ativo;
+    if (senha) usuario.senha = senha;
+    if (cor !== undefined) usuario.cor = cor;
 
-    await secretaria.save();
+    await usuario.save();
 
     res.json({
       success: true,
       secretaria: {
-        id: secretaria.id,
-        nome: secretaria.nome,
-        email: secretaria.email,
-        ativo: secretaria.ativo,
-        permissoes: secretaria.permissoes,
+        id: usuario.id,
+        nome: usuario.nome,
+        email: usuario.email,
+        ativo: usuario.ativo,
+        permissoes: usuario.permissoes,
+        role: usuario.role,
+        cor: usuario.cor,
       },
     });
   } catch (err) {
-    console.error('Erro ao atualizar secretaria:', err);
-    res.status(500).json({ success: false, message: 'Erro ao atualizar secretaria' });
+    console.error('Erro ao atualizar usuário:', err);
+    res.status(500).json({ success: false, message: 'Erro ao atualizar usuário' });
   }
 };
 
-// Remove uma secretaria
+// Remove usuário
 exports.remover = async (req, res) => {
   try {
     const { id } = req.params;
-    const secretaria = await User.findOne({ where: { id, criadoPorId: req.user.id, role: 'secretaria' } });
-    if (!secretaria) {
-      return res.status(404).json({ success: false, message: 'Secretaria não encontrada' });
+    const usuario = await User.findOne({ where: { id, criadoPorId: req.user.id } });
+    if (!usuario) {
+      return res.status(404).json({ success: false, message: 'Usuário não encontrado' });
     }
-    await secretaria.destroy();
-    res.json({ success: true, message: 'Secretaria removida com sucesso' });
+    await usuario.destroy();
+    res.json({ success: true, message: 'Usuário removido com sucesso' });
   } catch (err) {
-    console.error('Erro ao remover secretaria:', err);
-    res.status(500).json({ success: false, message: 'Erro ao remover secretaria' });
+    console.error('Erro ao remover usuário:', err);
+    res.status(500).json({ success: false, message: 'Erro ao remover usuário' });
   }
 };

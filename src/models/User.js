@@ -14,10 +14,15 @@ const User = sequelize.define('User', {
     comment: 'Senha do eCAC para automação do robô'
   },
   role: {
-    type: DataTypes.ENUM('dentista', 'secretaria'),
+    type: DataTypes.ENUM('dentista', 'secretaria', 'dentista_parceiro'),
     allowNull: false,
     defaultValue: 'dentista',
     comment: 'Papel do usuário no sistema'
+  },
+  cor: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    comment: 'Cor do dentista na agenda'
   },
   permissoes: {
     type: DataTypes.JSON,

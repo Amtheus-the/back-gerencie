@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Agendamento, Procedimento, Paciente } = require('../models');
+const { Agendamento, Procedimento, Paciente, User } = require('../models');
 const { verificarToken } = require('../middleware/authMiddleware');
 
 router.use(verificarToken);
@@ -22,6 +22,11 @@ router.get('/', async (req, res) => {
           model: Paciente,
           as: 'paciente',
           attributes: ['id', 'nome']
+        },
+        {
+          model: User,
+          as: 'usuario',
+          attributes: ['id', 'nome', 'cor']
         }
       ]
     });

@@ -393,6 +393,8 @@ connectDB().then(async () => {
     await sequelize.query(`ALTER TABLE clinicas ADD COLUMN IF NOT EXISTS descricao_padrao_nota TEXT NULL`);
     await sequelize.query(`ALTER TABLE clinicas ADD COLUMN IF NOT EXISTS inscricao_municipal VARCHAR(30) NULL`);
     await sequelize.query(`ALTER TABLE despesas ADD COLUMN IF NOT EXISTS usado_carne_leao TINYINT(1) NOT NULL DEFAULT 0`);
+    await sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS cor VARCHAR(20) NULL`);
+    await sequelize.query(`ALTER TABLE users MODIFY COLUMN role ENUM('dentista','secretaria','dentista_parceiro') NOT NULL DEFAULT 'dentista'`);
   } catch {}
 
   app.listen(PORT, () => {
