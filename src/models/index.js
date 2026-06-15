@@ -229,6 +229,12 @@ Agendamento.belongsTo(Procedimento, {
   as: 'procedimento'
 });
 
+// Relacionamento: Agendamento pertence a um Paciente
+Agendamento.belongsTo(Paciente, {
+  foreignKey: 'paciente_id',
+  as: 'paciente'
+});
+
 // Importar o model Anamnese
 const Anamnese = require('./anamnese');
 
