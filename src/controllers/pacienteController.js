@@ -48,7 +48,7 @@ class PacienteController {
   async listar(req, res) {
     try {
       const page = Math.max(1, parseInt(req.query.page) || 1);
-      const limit = Math.min(100, parseInt(req.query.limit) || 20);
+      const limit = Math.min(9999, parseInt(req.query.limit) || 20);
       const offset = (page - 1) * limit;
       const busca = req.query.busca?.trim();
 
