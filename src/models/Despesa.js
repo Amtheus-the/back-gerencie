@@ -56,7 +56,23 @@ const Despesa = sequelize.define('Despesa', {
   usadoCarneLeao: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
+    field: 'usado_carne_leao',
     comment: 'Indica se a despesa foi usada no Carnê-Leão'
+  },
+  comprovanteUrl: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    field: 'comprovante_url'
+  },
+  comprovanteNome: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    field: 'comprovante_nome'
+  },
+  comprovanteTamanho: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'comprovante_tamanho'
   },
   planoContaId: {
     type: DataTypes.UUID,

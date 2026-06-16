@@ -162,6 +162,75 @@ exports.deletarDespesa = async (req, res) => {
 };
 
 /**
+ * Upload de comprovante para uma despesa → S3
+ */
+exports.uploadComprovante = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const despesa = await Despesa.findOne({
+      where: { id, clinicaId: req.user.clinicaId }
+    });
+
+    if (!despesa) {
+      return res.status(404).json({ success: false, message: 'Despesa não encontrada' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Nenhum arquivo enviado' });
+    }
+
+    // multer-s3 preenche req.file.location (URL) e req.file.key
+    const comprovanteUrl  = req.file.location;
+    const comprovanteNome = req.file.originalname;
+    const comprovanteTamanho = req.file.size;
+
+    await despesa.update({ comprovanteUrl, comprovanteNome, comprovanteTamanho });
+
+    res.json({
+      success: true,
+      message: 'Comprovante anexado com sucesso',
+      data: { comprovanteUrl, comprovanteNome, comprovanteTamanho }
+    });
+  } catch (error) {
+    console.error('Erro ao fazer upload do comprovante:', error);
+    res.status(500).json({ success: false, message: 'Erro ao fazer upload do comprovante' });
+  }
+};
+
+/**
+ * Remove comprovante de uma despesa (S3 + DB)
+ */
+exports.removerComprovante = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { s3, S3_BUCKET, extractS3Key } = require('../config/s3');
+
+    const despesa = await Despesa.findOne({
+      where: { id, clinicaId: req.user.clinicaId }
+    });
+
+    if (!despesa) {
+      return res.status(404).json({ success: false, message: 'Despesa não encontrada' });
+    }
+
+    if (despesa.comprovanteUrl) {
+      const key = extractS3Key(despesa.comprovanteUrl);
+      if (key) {
+        await s3.deleteObject({ Bucket: S3_BUCKET, Key: key }).promise().catch(() => {});
+      }
+    }
+
+    await despesa.update({ comprovanteUrl: null, comprovanteNome: null, comprovanteTamanho: null });
+
+    res.json({ success: true, message: 'Comprovante removido com sucesso' });
+  } catch (error) {
+    console.error('Erro ao remover comprovante:', error);
+    res.status(500).json({ success: false, message: 'Erro ao remover comprovante' });
+  }
+};
+
+/**
  * Toggle usado_carne_leao
  */
 exports.toggleCarneLeao = async (req, res) => {
