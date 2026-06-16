@@ -135,7 +135,33 @@ const Faturamento = sequelize.define('Faturamento', {
     allowNull: true,
     field: 'numero_nota',
     comment: 'ID/número da nota fiscal na Nuvem Fiscal'
-  }
+  },
+  notaFiscalId: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    field: 'nota_fiscal_id',
+  },
+  notaFiscalUrl: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    field: 'nota_fiscal_url',
+    comment: 'URL do PDF da nota fiscal (NuvemFiscal ou S3)'
+  },
+  comprovanteUrl: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    field: 'comprovante_url',
+  },
+  comprovanteNome: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    field: 'comprovante_nome',
+  },
+  comprovanteTamanho: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'comprovante_tamanho',
+  },
 }, {
   tableName: 'faturamentos',
   underscored: true,
