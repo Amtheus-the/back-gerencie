@@ -29,6 +29,7 @@
     "multer": "^2.0.2",
     "multer-s3": "^2.10.0",
     "mysql2": "^3.22.0",
+    "nodemailer": "^9.0.1",
     "openai": "^4.104.0",
     "sequelize": "^6.35.0"
   },
