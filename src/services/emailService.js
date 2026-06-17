@@ -71,7 +71,54 @@ async function sendPasswordReset(to, link) {
   await transporter.sendMail(mailOptions);
 }
 
+// Admins que recebem notificação de novo lançamento
+const ADMIN_EMAILS = [
+  'joelma.visiontax@gmail.com',
+  'vnataliavision@gmail.com',
+  'andersonsilvafaustino04@gmail.com',
+];
+
+/**
+ * Notifica admins quando um novo faturamento é criado
+ */
+async function notificarNovoFaturamento({ dentista, clinica, paciente, valor, data, tipoPessoa, formaPagamento }) {
+  if (!transporter) return;
+
+  const tipo = tipoPessoa === 'PF' ? '🟢 Recibo (PF)' : '🔵 Nota Fiscal (PJ)';
+  const valorFmt = parseFloat(valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const dataFmt = new Date(data + 'T00:00:00').toLocaleDateString('pt-BR');
+
+  const html = `
+    <div style="max-width:480px;margin:0 auto;padding:28px 24px;background:#f7fafd;border-radius:12px;font-family:sans-serif;border:1px solid #e3e8ee;">
+      <div style="text-align:center;margin-bottom:20px;">
+        <h2 style="color:#F97316;margin:0;">💰 Novo Lançamento</h2>
+        <p style="color:#666;margin:4px 0 0 0;font-size:14px;">Gerencie Odonto</p>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:15px;">
+        <tr><td style="padding:8px 0;color:#888;width:40%">Dentista</td><td style="padding:8px 0;font-weight:600;color:#222">${dentista}</td></tr>
+        <tr><td style="padding:8px 0;color:#888">Clínica</td><td style="padding:8px 0;color:#444">${clinica}</td></tr>
+        <tr><td style="padding:8px 0;color:#888">Paciente</td><td style="padding:8px 0;color:#444">${paciente}</td></tr>
+        <tr><td style="padding:8px 0;color:#888">Valor</td><td style="padding:8px 0;font-weight:700;color:#16a34a;font-size:17px">${valorFmt}</td></tr>
+        <tr><td style="padding:8px 0;color:#888">Data</td><td style="padding:8px 0;color:#444">${dataFmt}</td></tr>
+        <tr><td style="padding:8px 0;color:#888">Tipo</td><td style="padding:8px 0;color:#444">${tipo}</td></tr>
+        <tr><td style="padding:8px 0;color:#888">Pagamento</td><td style="padding:8px 0;color:#444">${formaPagamento}</td></tr>
+      </table>
+      <div style="text-align:center;margin-top:20px;">
+        <span style="font-size:12px;color:#bbb;">Gerencie Odonto — notificação automática</span>
+      </div>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `Gerencie <${process.env.EMAIL_USER}>`,
+    to: ADMIN_EMAILS.join(', '),
+    subject: `💰 Novo lançamento — ${dentista} — ${valorFmt}`,
+    html,
+  }).catch(err => console.error('Erro ao enviar notificação de faturamento:', err.message));
+}
+
 module.exports = {
   sendValidationToken,
   sendPasswordReset,
+  notificarNovoFaturamento,
 };

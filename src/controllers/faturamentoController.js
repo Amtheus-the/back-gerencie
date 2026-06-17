@@ -108,6 +108,7 @@ exports.listarFaturamento = async (req, res) => {
  */
 exports.criarFaturamento = async (req, res) => {
   try {
+  const { notificarNovoFaturamento } = require('../services/emailService');
   const userId = req.user.id;
   let { descricao, valor, data, formaPagamento, paciente_id, paciente, tipoPessoa, observacoes, cpf } = req.body;
   console.log('🔎 [DEBUG] Corpo da requisição faturamento:', req.body);
@@ -156,11 +157,24 @@ exports.criarFaturamento = async (req, res) => {
       message: 'Faturamento registrado com sucesso',
       data: novoFaturamento
     });
+
+    // Notifica admins (assíncrono, não bloqueia a resposta)
+    const { Clinica } = require('../models');
+    const clinicaObj = await Clinica.findByPk(usuario.clinicaId, { attributes: ['nome'] }).catch(() => null);
+    notificarNovoFaturamento({
+      dentista: req.user.nome || req.user.email,
+      clinica: clinicaObj?.nome || 'N/A',
+      paciente,
+      valor,
+      data,
+      tipoPessoa,
+      formaPagamento,
+    });
   } catch (error) {
     console.error('Erro ao criar faturamento:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Erro ao criar faturamento' 
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao criar faturamento'
     });
   }
 };
