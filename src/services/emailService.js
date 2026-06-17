@@ -109,12 +109,19 @@ async function notificarNovoFaturamento({ dentista, clinica, paciente, valor, da
     </div>
   `;
 
+  console.log(`📧 [EMAIL] Enviando notificação de faturamento para: ${ADMIN_EMAILS.join(', ')}`);
   await transporter.sendMail({
     from: `Gerencie <${process.env.EMAIL_USER}>`,
     to: ADMIN_EMAILS.join(', '),
     subject: `💰 Novo lançamento — ${dentista} — ${valorFmt}`,
     html,
-  }).catch(err => console.error('Erro ao enviar notificação de faturamento:', err.message));
+  }).then(() => {
+    console.log(`✅ [EMAIL] Notificação enviada com sucesso — ${dentista} — ${valorFmt}`);
+  }).catch(err => {
+    console.error(`❌ [EMAIL] Falha ao enviar notificação: ${err.message}`);
+    console.error(`❌ [EMAIL] EMAIL_USER configurado: ${process.env.EMAIL_USER || 'NÃO DEFINIDO'}`);
+    console.error(`❌ [EMAIL] EMAIL_PASS definido: ${process.env.EMAIL_PASS ? 'SIM' : 'NÃO'}`);
+  });
 }
 
 module.exports = {
