@@ -613,6 +613,14 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
     const isPJ = faturamento.tipo_pessoa === 'PJ';
     const cnpjClinica = (clinica.cnpj || '').replace(/\D/g, '');
 
+    // Valida CPF/CNPJ do tomador antes de enviar
+    if (isPJ && cnpjTomador.length !== 14) {
+      return res.status(422).json({ success: false, message: `CNPJ do tomador inválido ou não cadastrado (encontrado: "${cnpjTomador}"). Verifique o cadastro do paciente/empresa.` });
+    }
+    if (!isPJ && cpfTomador.length !== 11) {
+      return res.status(422).json({ success: false, message: `CPF do tomador inválido ou não cadastrado (encontrado: "${cpfTomador}"). Verifique o CPF no lançamento ou no cadastro do paciente.` });
+    }
+
     const nfsePayload = {
       provedor: 'padrao',
       ambiente: 'producao',
