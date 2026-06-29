@@ -3,11 +3,12 @@
  * Gerencia visualização detalhada dos usuários e upload de documentos
  */
 
-const { Clinica, User, Faturamento, Despesa, Analise, Documento } = require('../models');
+const { Clinica, User, Faturamento, Despesa, Analise, Documento, Paciente } = require('../models');
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const path = require('path');
 const fs = require('fs').promises;
+const axios = require('axios');
 
 /**
  * Listar usuários com resumo para painel operacional
@@ -550,6 +551,114 @@ exports.getPerfilCompletoClinica = async (req, res) => {
     res.status(500).json({
       erro: 'Erro ao buscar perfil completo da clínica',
       detalhes: error.message
+    });
+  }
+};
+
+/**
+ * Emitir nota fiscal de um faturamento PJ em nome do dentista (admin)
+ * POST /api/operacional/faturamentos/:id/emitir-nota
+ */
+exports.emitirNotaFiscalAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const faturamento = await Faturamento.findByPk(id);
+    if (!faturamento) {
+      return res.status(404).json({ success: false, message: 'Faturamento não encontrado' });
+    }
+
+    if (faturamento.notaEmitida) {
+      return res.status(422).json({ success: false, message: 'Nota fiscal já foi emitida para este lançamento.' });
+    }
+
+    const usuario = await User.findByPk(faturamento.userId || faturamento.user_id);
+    if (!usuario) {
+      return res.status(404).json({ success: false, message: 'Usuário do faturamento não encontrado' });
+    }
+
+    const clinicaId = usuario.clinicaId || usuario.clinica_id;
+    const clinica = await Clinica.findByPk(clinicaId);
+    if (!clinica) {
+      return res.status(404).json({ success: false, message: 'Clínica não encontrada' });
+    }
+
+    const camposFaltando = [];
+    if (!clinica.cnpj) camposFaltando.push('CNPJ da clínica');
+    if (!clinica.codigoServico) camposFaltando.push('Código do Serviço (NFS-e)');
+    if (!clinica.descricaoPadraoNota) camposFaltando.push('Descrição Padrão da Nota Fiscal');
+    if (!clinica.cidade) camposFaltando.push('Cidade da clínica');
+    if (!clinica.estado) camposFaltando.push('UF da clínica');
+
+    if (camposFaltando.length > 0) {
+      return res.status(422).json({
+        success: false,
+        message: `Complete os dados da clínica antes de emitir. Faltando: ${camposFaltando.join(', ')}.`,
+        camposFaltando,
+      });
+    }
+
+    let paciente = null;
+    const pacienteId = faturamento.pacienteId || faturamento.paciente_id;
+    if (pacienteId) paciente = await Paciente.findByPk(pacienteId);
+    if (!paciente && faturamento.cpf) {
+      const cpfLimpo = faturamento.cpf.replace(/\D/g, '');
+      paciente = await Paciente.findOne({ where: { cpf_cnpj: faturamento.cpf } })
+        || await Paciente.findOne({ where: { cpf_cnpj: cpfLimpo } });
+    }
+
+    const cpfTomador  = (paciente?.cpf_cnpj || faturamento.cpf || faturamento.pagador_cpf || '').replace(/\D/g, '');
+    const cnpjTomador = (faturamento.cnpj || faturamento.pagador_cnpj || '').replace(/\D/g, '');
+    const nomeTomador = paciente?.nome || faturamento.paciente || faturamento.pagador_nome || '';
+    const isPJ = faturamento.tipo_pessoa === 'PJ';
+    const cnpjClinica = (clinica.cnpj || '').replace(/\D/g, '');
+
+    const nfsePayload = {
+      provedor: 'padrao',
+      ambiente: 'producao',
+      infDPS: {
+        dhEmi: new Date(faturamento.data || Date.now()).toISOString(),
+        prest: { CNPJ: cnpjClinica },
+        toma: {
+          ...(isPJ ? { CNPJ: cnpjTomador } : { CPF: cpfTomador }),
+          xNome: nomeTomador,
+          ...(paciente?.email || faturamento.email ? { email: paciente?.email || faturamento.email } : {}),
+        },
+        serv: {
+          cServ: {
+            cTribNac: clinica.codigoServico || '04693',
+            xDescServ: clinica.descricaoPadraoNota || faturamento.descricao,
+          },
+        },
+        valores: {
+          vServPrest: { vServ: parseFloat(faturamento.valor) },
+          trib: { tribMun: { tribISSQN: 1 } },
+        },
+      },
+    };
+
+    const { getNuvemFiscalToken } = require('../services/nuvemFiscalService');
+    const token = await getNuvemFiscalToken();
+
+    const response = await axios.post('https://api.nuvemfiscal.com.br/nfse/dps', nfsePayload, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+    });
+
+    const nfseId = response.data?.id || response.data?.data?.id || null;
+    await faturamento.update({ notaEmitida: true, numeroNota: nfseId || response.data?.numero });
+
+    return res.json({ success: true, message: 'Nota Fiscal enviada para emissão!', data: response.data });
+
+  } catch (error) {
+    console.error('Erro ao emitir NF (admin):', error.response?.status, error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao emitir nota fiscal',
+      error: error.response?.data || error.message,
     });
   }
 };

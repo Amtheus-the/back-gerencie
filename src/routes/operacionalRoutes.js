@@ -119,4 +119,7 @@ router.get('/faturamentos/:id/recibo', reciboController.downloadRecibo);
 // Remover recibo de um lançamento
 router.delete('/faturamentos/:id/recibo', reciboController.removerRecibo);
 
+// Emitir nota fiscal de um faturamento PJ (admin)
+router.post('/faturamentos/:id/emitir-nota', operacionalController.emitirNotaFiscalAdmin);
+
 module.exports = router;
