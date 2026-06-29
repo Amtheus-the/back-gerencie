@@ -122,4 +122,7 @@ router.delete('/faturamentos/:id/recibo', reciboController.removerRecibo);
 // Emitir nota fiscal de um faturamento PJ (admin)
 router.post('/faturamentos/:id/emitir-nota', operacionalController.emitirNotaFiscalAdmin);
 
+// Cancelar nota fiscal junto à prefeitura (admin)
+router.delete('/faturamentos/:id/nota', operacionalController.cancelarNotaFiscalAdmin);
+
 module.exports = router;

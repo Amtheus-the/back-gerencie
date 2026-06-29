@@ -671,4 +671,56 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
   }
 };
 
+/**
+ * Cancelar nota fiscal junto à prefeitura via Nuvem Fiscal (admin)
+ * DELETE /api/operacional/faturamentos/:id/nota
+ */
+exports.cancelarNotaFiscalAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { motivo } = req.body;
+
+    const faturamento = await Faturamento.findByPk(id);
+    if (!faturamento) {
+      return res.status(404).json({ success: false, message: 'Faturamento não encontrado' });
+    }
+
+    if (!faturamento.notaEmitida) {
+      return res.status(422).json({ success: false, message: 'Este lançamento não possui nota fiscal emitida.' });
+    }
+
+    const nfseId = faturamento.numeroNota || faturamento.notaFiscalId;
+    if (!nfseId) {
+      return res.status(422).json({ success: false, message: 'ID da nota fiscal não encontrado. Não é possível cancelar.' });
+    }
+
+    const { getNuvemFiscalToken } = require('../services/nuvemFiscalService');
+    const token = await getNuvemFiscalToken();
+
+    await axios.post(
+      `https://api.nuvemfiscal.com.br/nfse/${nfseId}/cancelamento`,
+      { motivo: motivo || 'Cancelamento solicitado pelo administrador.' },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+      }
+    );
+
+    await faturamento.update({ notaEmitida: false, numeroNota: null });
+
+    return res.json({ success: true, message: 'Nota fiscal cancelada com sucesso.' });
+
+  } catch (error) {
+    console.error('Erro ao cancelar NF (admin):', error.response?.status, error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao cancelar nota fiscal',
+      error: error.response?.data || error.message,
+    });
+  }
+};
+
 module.exports = exports;
