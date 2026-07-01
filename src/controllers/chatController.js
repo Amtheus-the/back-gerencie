@@ -747,29 +747,42 @@ Dados financeiros reais do dentista (${nomeDentista}):
 📊 VARIAÇÃO DO FATURAMENTO: ${variacao !== null ? (variacao >= 0 ? '+' : '') + variacao.toFixed(1) + '%' : 'sem dados anteriores'}
 `;
 
+    // Cálculo comparativo: e se todo faturamento fosse PJ?
+    const totalFatTudo = totalFatPFAtual + totalFatPJAtual;
+    const dasSeForsseTudoPJ = calcularDASSimples(totalFatTudo, rbt12Est > 0 ? rbt12Est : totalFatTudo * 12);
+    const despesasDedutiveisAtual = totalDespAtual; // despesas lançadas abatidas no PF
+    const semDespesas = totalDespAtual < 50; // praticamente sem despesas lançadas
+
     const promptInsight = `
-Você é a Aline, assessora tributária da clínica odontológica. Com base nos dados reais abaixo, gere UMA mensagem proativa, curta, calorosa e útil para o dentista.
+Você é a Aline, assessora tributária da clínica odontológica. Com base nos dados reais abaixo, gere UMA mensagem proativa, curta, calorosa e ESTRATÉGICA para o dentista.
 
 ${contexto}
+- Se todo faturamento fosse PJ (Simples): DAS seria R$ ${dasSeForsseTudoPJ.toFixed(2)}
+- Sem despesas dedutíveis lançadas: ${semDespesas ? 'SIM (menos de R$50 em despesas)' : 'NÃO (há despesas lançadas: R$ ' + totalDespAtual.toFixed(2) + ')'}
 
 REGRAS OBRIGATÓRIAS:
 - Use os números reais, nunca invente valores
-- Máximo 2 linhas
+- Máximo 2-3 linhas
 - NÃO faça perguntas, apenas informe/aconselhe
 - Não se apresente, vá direto ao ponto
 - Use emojis com moderação
 
-REGRAS POR REGIME:
-- Se regime atual é PF: fale sobre o DARF, despesas dedutíveis, e compare com PJ apenas se DAS < DARF
-- Se regime atual é PJ: fale sobre o DAS do mês e variação do faturamento
-- Se regime atual é HIBRIDO: mencione AMBOS os impostos (DARF do PF e DAS do PJ), elogie a estratégia e dê dica de otimização
-- NUNCA sugira migrar para um regime onde o imposto é MAIOR
-- NUNCA confunda DARF com DAS
+ANÁLISE ESTRATÉGICA POR CENÁRIO (aplique o mais relevante):
 
-EXEMPLOS CORRETOS:
-- PF com DARF alto: "Atenção! DARF de R$900 este mês. Lançar mais despesas dedutíveis pode reduzir esse valor. 💡"
-- PJ com bom faturamento: "Junho fechou bem! DAS de R$300 no Simples. Faturamento cresceu 30% — continue assim! 💪"
-- HÍBRIDO: "Ótima estratégia híbrida! DARF de R$68 no PF e DAS de R$300 no PJ este mês. Total de impostos: R$368. 📊"
+1. HÍBRIDO SEM DESPESAS (PF sem despesas lançadas): Se o dentista tem faturamento PF mas QUASE NENHUMA despesa dedutível lançada, o DARF fica alto sem motivo. Nesse caso, avise que migrar esse valor para PJ pagaria menos imposto (DAS < DARF sem deduções). Ex: "Com R$10.000 no PF e sem despesas para abater, o DARF foi R$1.854. Se fosse PJ, pagaria apenas ~R$X no Simples. 💡 Vale lançar mais despesas ou migrar esse valor para PJ."
+
+2. HÍBRIDO COM DESPESAS: Se tem despesas para abater, o PF pode compensar. Comente que as despesas estão reduzindo o imposto e incentive a manter o lançamento correto.
+
+3. PF PURO SEM DESPESAS: Avise que sem despesas dedutíveis, PJ é mais vantajoso — calcule quanto seria o DAS e mostre a diferença.
+
+4. PF PURO COM DESPESAS: Elogie as deduções e mostre quanto economizou comparado à alíquota cheia.
+
+5. PJ PURO: Fale sobre o DAS e variação do faturamento.
+
+NUNCA:
+- Sugira migrar para regime onde o imposto é MAIOR
+- Confunda DARF (PF) com DAS (PJ)
+- Elogie genericamente sem dar números reais
 `;
 
     const completion = await openai.chat.completions.create({
