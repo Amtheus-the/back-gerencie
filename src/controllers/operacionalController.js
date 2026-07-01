@@ -723,4 +723,32 @@ exports.cancelarNotaFiscalAdmin = async (req, res) => {
   }
 };
 
+/**
+ * Registrar emissão manual de NF + upload do PDF para S3
+ * POST /api/operacional/faturamentos/:id/nota-manual
+ * Body: multipart/form-data com campo "nota" (PDF) + campo "numeroNota" (opcional)
+ */
+exports.registrarNotaManual = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { numeroNota } = req.body;
+
+    const faturamento = await Faturamento.findByPk(id);
+    if (!faturamento) return res.status(404).json({ success: false, message: 'Faturamento não encontrado' });
+
+    const notaUrl = req.file?.location || req.file?.path || null;
+
+    await faturamento.update({
+      notaEmitida: true,
+      numeroNota: numeroNota || `MANUAL-${Date.now()}`,
+      notaFiscalUrl: notaUrl,
+    });
+
+    return res.json({ success: true, message: 'Nota fiscal registrada manualmente com sucesso.', notaUrl });
+  } catch (error) {
+    console.error('Erro ao registrar nota manual:', error.message);
+    return res.status(500).json({ success: false, message: 'Erro ao registrar nota manual', error: error.message });
+  }
+};
+
 module.exports = exports;

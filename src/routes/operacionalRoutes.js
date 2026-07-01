@@ -122,6 +122,27 @@ router.delete('/faturamentos/:id/recibo', reciboController.removerRecibo);
 // Emitir nota fiscal de um faturamento PJ (admin)
 router.post('/faturamentos/:id/emitir-nota', operacionalController.emitirNotaFiscalAdmin);
 
+// Registrar emissão manual de NF (admin fez manualmente no portal da prefeitura)
+const uploadNotaManual = multer({
+  storage: multerS3({
+    s3,
+    bucket: S3_BUCKET,
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+    key: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname);
+      cb(null, `notas-fiscais/${req.params.id}/nf-manual-${uniqueSuffix}${ext}`);
+    }
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = /pdf|jpg|jpeg|png/;
+    if (allowed.test(path.extname(file.originalname).toLowerCase())) cb(null, true);
+    else cb(new Error('Apenas PDF, JPG ou PNG são aceitos'));
+  }
+});
+router.post('/faturamentos/:id/nota-manual', uploadNotaManual.single('nota'), operacionalController.registrarNotaManual);
+
 // Cancelar nota fiscal junto à prefeitura (admin)
 router.delete('/faturamentos/:id/nota', operacionalController.cancelarNotaFiscalAdmin);
 
