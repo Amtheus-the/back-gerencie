@@ -30,14 +30,14 @@ exports.saveChatMessage = async (req, res) => {
   }
 };
 
-// Consulta mensagens do usuário (implementação removida, pois usava PostgreSQL)
+// Consulta mensagens do usuário (histórico desativado — sem armazenamento no MySQL ainda)
 exports.getUserChatMessages = async (req, res) => {
-  res.status(501).json({ error: 'Endpoint desativado. Função de chatbot não disponível.' });
+  res.json([]);
 };
 
-// Consulta se usuário está bloqueado (implementação removida, pois usava PostgreSQL)
+// Consulta se usuário está bloqueado (sem limite de mensagens por enquanto)
 exports.isUserBlocked = async (req, res) => {
-  res.status(501).json({ error: 'Endpoint desativado. Função de chatbot não disponível.' });
+  res.json({ bloqueado: false });
 };
 
 module.exports = exports;
