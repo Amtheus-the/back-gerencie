@@ -94,13 +94,14 @@ exports.getMetricas = async (req, res) => {
     const totalDespesas = despesas.reduce((sum, d) => sum + parseFloat(d.valor), 0);
 
     // ===== RBT12 (Receita Bruta dos últimos 12 meses) - EXCLUI O MÊS ATUAL =====
-    // O faturamento do mês atual só entra no RBT12 no mês seguinte
-    // Por isso, calculamos dos últimos 12 meses ATÉ o mês anterior
+    // Calcula retrocedendo 365 dias a partir do 1º do mês anterior
+    // (igual ao sistema legado: timedelta(days=365) a partir do 1º do mês anterior)
     const primeiroDiaMesAtual = new Date(anoConsulta, mesConsulta - 1, 1);
     const ultimoDiaMesAnterior = new Date(primeiroDiaMesAtual.getTime() - 1); // Último dia do mês anterior
 
-    // Retrocede 12 meses a partir do mês anterior
-    const dataInicioRbt12 = new Date(anoConsulta, mesConsulta - 13, 1);
+    const primeiroDiaMesAnterior = new Date(anoConsulta, mesConsulta - 2, 1);
+    const dataInicioRbt12Raw = new Date(primeiroDiaMesAnterior.getTime() - 365 * 24 * 60 * 60 * 1000);
+    const dataInicioRbt12 = new Date(dataInicioRbt12Raw.getFullYear(), dataInicioRbt12Raw.getMonth(), 1);
 
     const faturamentosPJ12Meses = await Faturamento.findAll({
       where: {

@@ -712,7 +712,7 @@ exports.getInsights = async (req, res) => {
     const nomeMesAtual = mesesPt[mesAtual - 1];
     const nomeMesAnt = mesesPt[mesAnt - 1];
 
-
+    const variacao = totalFatAnt > 0 ? ((totalFatAtual - totalFatAnt) / totalFatAnt) * 100 : null;
 
     let contexto = `
 Dados financeiros reais do dentista (${nomeDentista}):
