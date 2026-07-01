@@ -724,6 +724,31 @@ exports.cancelarNotaFiscalAdmin = async (req, res) => {
 };
 
 /**
+ * Alterar tipoPessoa de um faturamento (PF ↔ PJ)
+ * PATCH /api/operacional/faturamentos/:id/tipo
+ */
+exports.alterarTipoPessoa = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tipoPessoa } = req.body;
+
+    if (!['PF', 'PJ'].includes(tipoPessoa)) {
+      return res.status(400).json({ success: false, message: 'tipoPessoa deve ser PF ou PJ' });
+    }
+
+    const faturamento = await Faturamento.findByPk(id);
+    if (!faturamento) return res.status(404).json({ success: false, message: 'Faturamento não encontrado' });
+
+    await faturamento.update({ tipoPessoa });
+
+    return res.json({ success: true, tipoPessoa: faturamento.tipoPessoa });
+  } catch (error) {
+    console.error('Erro ao alterar tipo pessoa:', error.message);
+    return res.status(500).json({ success: false, message: 'Erro ao alterar tipo pessoa' });
+  }
+};
+
+/**
  * Registrar emissão manual de NF + upload do PDF para S3
  * POST /api/operacional/faturamentos/:id/nota-manual
  * Body: multipart/form-data com campo "nota" (PDF) + campo "numeroNota" (opcional)

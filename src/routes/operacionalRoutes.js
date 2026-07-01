@@ -119,6 +119,9 @@ router.get('/faturamentos/:id/recibo', reciboController.downloadRecibo);
 // Remover recibo de um lançamento
 router.delete('/faturamentos/:id/recibo', reciboController.removerRecibo);
 
+// Alterar tipoPessoa de um faturamento (PF ↔ PJ)
+router.patch('/faturamentos/:id/tipo', operacionalController.alterarTipoPessoa);
+
 // Emitir nota fiscal de um faturamento PJ (admin)
 router.post('/faturamentos/:id/emitir-nota', operacionalController.emitirNotaFiscalAdmin);
 
