@@ -747,44 +747,50 @@ Dados financeiros reais do dentista (${nomeDentista}):
 📊 VARIAÇÃO DO FATURAMENTO: ${variacao !== null ? (variacao >= 0 ? '+' : '') + variacao.toFixed(1) + '%' : 'sem dados anteriores'}
 `;
 
-    // Cálculo comparativo: e se todo faturamento fosse PJ?
+    // Cálculos comparativos
     const totalFatTudo = totalFatPFAtual + totalFatPJAtual;
-    const dasSeForsseTudoPJ = calcularDASSimples(totalFatTudo, rbt12Est > 0 ? rbt12Est : totalFatTudo * 12);
-    const despesasDedutiveisAtual = totalDespAtual; // despesas lançadas abatidas no PF
-    const semDespesas = totalDespAtual < 50; // praticamente sem despesas lançadas
+    const rbt12ParaCalculo = (rbt12Est > 0 ? rbt12Est : totalFatTudo * 12) || totalFatTudo * 12;
+    const dasSeForsseTudoPJ = calcularDASSimples(totalFatTudo, rbt12ParaCalculo);
+    const darfSeFosseTudoPF = calcularIRPF(Math.max(0, totalFatTudo - totalDespAtual));
+    const semDespesas = totalDespAtual < 50;
+
+    // Quanto o dentista economizaria migrando PJ → PF (se tem despesas)
+    const darfDaPorcaoPJSeFossePF = calcularIRPF(Math.max(0, totalFatPJAtual - totalDespAtual));
+    const economiaDesp = totalFatPJAtual > 0 && !semDespesas ? (dasAtual - darfDaPorcaoPJSeFossePF) : 0;
 
     const promptInsight = `
-Você é a Aline, assessora tributária da clínica odontológica. Com base nos dados reais abaixo, gere UMA mensagem proativa, curta, calorosa e ESTRATÉGICA para o dentista.
+Você é a Aline, assessora tributária de clínicas odontológicas. Gere UMA mensagem curta, direta e estratégica com base nos dados reais abaixo.
 
 ${contexto}
-- Se todo faturamento fosse PJ (Simples): DAS seria R$ ${dasSeForsseTudoPJ.toFixed(2)}
-- Sem despesas dedutíveis lançadas: ${semDespesas ? 'SIM (menos de R$50 em despesas)' : 'NÃO (há despesas lançadas: R$ ' + totalDespAtual.toFixed(2) + ')'}
+- Se TODO faturamento fosse PJ: DAS = R$ ${dasSeForsseTudoPJ.toFixed(2)}
+- Se TODO faturamento fosse PF (usando despesas): DARF = R$ ${darfSeFosseTudoPF.toFixed(2)}
+- Despesas lançadas este mês: R$ ${totalDespAtual.toFixed(2)} ${semDespesas ? '(NENHUMA despesa lançada)' : ''}
 
-REGRAS OBRIGATÓRIAS:
-- Use os números reais, nunca invente valores
-- Máximo 2-3 linhas
-- NÃO faça perguntas, apenas informe/aconselhe
+⚠️ REGRA FUNDAMENTAL — NUNCA ESQUEÇA:
+- No PJ (Simples Nacional): despesas NÃO reduzem o DAS. O DAS é calculado só sobre o faturamento × alíquota efetiva. Despesas no PJ são inúteis tributariamente.
+- No PF (Carnê-Leão): despesas dedutíveis REDUZEM a base de cálculo do DARF diretamente. Quanto mais despesa, menor o DARF.
+- Portanto: se o dentista tem DESPESAS, o PF é vantajoso. Se não tem despesas, o PJ (6% efetivo) geralmente é mais barato que o IRPF.
+
+CENÁRIOS — aplique o mais relevante:
+
+A) PJ COM DESPESAS lançadas: As despesas não servem no PJ! Avise que se migrar esse faturamento para PF, as despesas podem reduzir ou zerar o DARF. Calcule e compare. Ex: "Você tem R$X em despesas, mas elas não reduzem o DAS do PJ. Se esse faturamento fosse Carnê-Leão (PF), as despesas poderiam zerar seu DARF. 💡 Vale avaliar migrar para PF."
+
+B) PJ SEM DESPESAS: O PJ está ótimo — alíquota baixa sem despesas para abater. Elogie a estratégia. Ex: "Com alíquota efetiva de 6%, o Simples Nacional é eficiente quando não há despesas para deduzir. DAS de R$X este mês. 👍"
+
+C) PF SEM DESPESAS: Perigo — IRPF alto sem abatimentos. Sugira migrar para PJ. Ex: "Sem despesas para abater, o DARF de R$X é alto. Se fosse PJ, pagaria apenas ~R$Y no Simples (6%). 💡 Vale migrar esse faturamento para PJ."
+
+D) PF COM DESPESAS E DARF ZERADO: Perfeito! As despesas estão trabalhando. Comemore. Ex: "Ótimo! Suas despesas de R$X zeraram o DARF este mês. 🎉 Continue lançando tudo para manter o imposto baixo."
+
+E) PF COM DESPESAS E DARF AINDA ALTO: Sugira mais deduções. Ex: "Com R$X em despesas, o DARF caiu para R$Y. Ainda há espaço — aluguel, materiais e contador também são dedutíveis."
+
+F) HÍBRIDO: Analise cada parte separadamente (PF e PJ) e dê dica específica para a parte menos eficiente.
+
+REGRAS:
+- Use os números REAIS dos dados acima
+- Máximo 3 linhas
 - Não se apresente, vá direto ao ponto
-- Use emojis com moderação
-
-ANÁLISE ESTRATÉGICA POR CENÁRIO (aplique o mais relevante):
-
-1. HÍBRIDO SEM DESPESAS (menos de R$50 em despesas): Avise que sem despesas dedutíveis o DARF fica alto. Compare com o DAS se fosse PJ. Ex: "Com R$10.000 no PF e sem despesas para abater, o DARF foi R$1.854. Se fosse PJ, pagaria apenas ~R$606 no Simples. 💡 Vale lançar despesas dedutíveis ou migrar esse valor para PJ."
-
-2. HÍBRIDO COM DESPESAS E DARF ZERADO: Se as despesas zeraram o DARF, comemore! Ex: "Ótimo! Suas despesas dedutíveis de R$9.000 zeraram o DARF este mês. 🎉 Continue lançando todas as despesas do consultório para manter o imposto baixo!"
-
-3. HÍBRIDO COM DESPESAS E DARF AINDA ALTO: Se ainda há DARF mesmo com despesas, sugira mais deduções ou migrar parte para PJ. Ex: "Com R$3.000 em despesas, o DARF caiu para R$500. Ainda há espaço para deduzir mais — aluguel, materiais e contador podem reduzir mais."
-
-4. PF PURO SEM DESPESAS: Avise que sem deduções, PJ seria mais barato.
-
-5. PF PURO COM DESPESAS (DARF zerado): Comemore e incentive a manter o hábito.
-
-6. PJ PURO: Fale sobre o DAS e variação do faturamento.
-
-NUNCA:
-- Sugira migrar para regime onde o imposto é MAIOR
-- Confunda DARF (PF) com DAS (PJ)
-- Elogie genericamente sem citar números reais do dentista
+- NUNCA diga que despesa reduz DAS no PJ
+- NUNCA sugira regime onde o imposto final é MAIOR
 `;
 
     const completion = await openai.chat.completions.create({
