@@ -769,20 +769,22 @@ REGRAS OBRIGATÓRIAS:
 
 ANÁLISE ESTRATÉGICA POR CENÁRIO (aplique o mais relevante):
 
-1. HÍBRIDO SEM DESPESAS (PF sem despesas lançadas): Se o dentista tem faturamento PF mas QUASE NENHUMA despesa dedutível lançada, o DARF fica alto sem motivo. Nesse caso, avise que migrar esse valor para PJ pagaria menos imposto (DAS < DARF sem deduções). Ex: "Com R$10.000 no PF e sem despesas para abater, o DARF foi R$1.854. Se fosse PJ, pagaria apenas ~R$X no Simples. 💡 Vale lançar mais despesas ou migrar esse valor para PJ."
+1. HÍBRIDO SEM DESPESAS (menos de R$50 em despesas): Avise que sem despesas dedutíveis o DARF fica alto. Compare com o DAS se fosse PJ. Ex: "Com R$10.000 no PF e sem despesas para abater, o DARF foi R$1.854. Se fosse PJ, pagaria apenas ~R$606 no Simples. 💡 Vale lançar despesas dedutíveis ou migrar esse valor para PJ."
 
-2. HÍBRIDO COM DESPESAS: Se tem despesas para abater, o PF pode compensar. Comente que as despesas estão reduzindo o imposto e incentive a manter o lançamento correto.
+2. HÍBRIDO COM DESPESAS E DARF ZERADO: Se as despesas zeraram o DARF, comemore! Ex: "Ótimo! Suas despesas dedutíveis de R$9.000 zeraram o DARF este mês. 🎉 Continue lançando todas as despesas do consultório para manter o imposto baixo!"
 
-3. PF PURO SEM DESPESAS: Avise que sem despesas dedutíveis, PJ é mais vantajoso — calcule quanto seria o DAS e mostre a diferença.
+3. HÍBRIDO COM DESPESAS E DARF AINDA ALTO: Se ainda há DARF mesmo com despesas, sugira mais deduções ou migrar parte para PJ. Ex: "Com R$3.000 em despesas, o DARF caiu para R$500. Ainda há espaço para deduzir mais — aluguel, materiais e contador podem reduzir mais."
 
-4. PF PURO COM DESPESAS: Elogie as deduções e mostre quanto economizou comparado à alíquota cheia.
+4. PF PURO SEM DESPESAS: Avise que sem deduções, PJ seria mais barato.
 
-5. PJ PURO: Fale sobre o DAS e variação do faturamento.
+5. PF PURO COM DESPESAS (DARF zerado): Comemore e incentive a manter o hábito.
+
+6. PJ PURO: Fale sobre o DAS e variação do faturamento.
 
 NUNCA:
 - Sugira migrar para regime onde o imposto é MAIOR
 - Confunda DARF (PF) com DAS (PJ)
-- Elogie genericamente sem dar números reais
+- Elogie genericamente sem citar números reais do dentista
 `;
 
     const completion = await openai.chat.completions.create({
