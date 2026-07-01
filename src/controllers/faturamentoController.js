@@ -510,12 +510,16 @@ exports.baixarNotaFiscal = async (req, res) => {
     const faturamento = await Faturamento.findOne({ where: { id, userId } });
     if (!faturamento) return res.status(404).json({ success: false, message: 'Faturamento não encontrado' });
 
-    // Nota migrada do sistema antigo: tem URL S3 mas não tem numeroNota da NuvemFiscal
-    if (!faturamento.numeroNota && faturamento.notaFiscalUrl) {
+    // Nota com URL S3 direta (migrada do sistema antigo OU emitida manualmente):
+    // tem notaFiscalUrl mas não tem numeroNota da NuvemFiscal (ou é prefixo MANUAL-)
+    const isManual = faturamento.notaFiscalUrl && (
+      !faturamento.numeroNota || String(faturamento.numeroNota).startsWith('MANUAL')
+    );
+    if (isManual) {
       const response = await axios.get(faturamento.notaFiscalUrl, { responseType: 'arraybuffer' });
       const nomeArquivo = faturamento.notaFiscalUrl.split('/').pop() || 'nota-fiscal.pdf';
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename=${nomeArquivo}`);
+      res.setHeader('Content-Disposition', `attachment; filename="${nomeArquivo}"`);
       return res.send(response.data);
     }
 
