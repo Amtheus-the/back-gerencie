@@ -739,6 +739,10 @@ exports.alterarTipoPessoa = async (req, res) => {
     const faturamento = await Faturamento.findByPk(id);
     if (!faturamento) return res.status(404).json({ success: false, message: 'Faturamento não encontrado' });
 
+    if (faturamento.notaEmitida || faturamento.reciboNome) {
+      return res.status(422).json({ success: false, message: 'Não é possível alterar o tipo de um lançamento que já possui nota fiscal ou recibo emitido.' });
+    }
+
     await faturamento.update({ tipoPessoa });
 
     return res.json({ success: true, tipoPessoa: faturamento.tipoPessoa });
