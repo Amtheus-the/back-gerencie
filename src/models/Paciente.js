@@ -84,6 +84,18 @@ const Paciente = sequelize.define('Paciente', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  anamneseData: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    field: 'anamnese_data',
+    comment: 'Respostas da anamnese preenchida pelo dentista'
+  },
+  anamneseUpdatedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'anamnese_updated_at',
+    comment: 'Data do último preenchimento da anamnese'
+  },
   ativo: {
     type: DataTypes.BOOLEAN,
     defaultValue: true
