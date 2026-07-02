@@ -3,9 +3,22 @@ exports.resumoFinanceiroPaciente = async (req, res) => {
   try {
     const { pacienteId } = req.params;
     const clinicaId = req.user.clinicaId;
+    const { Paciente } = require('../models');
 
+    // Busca o nome do paciente para filtrar faturamentos pelo nome (FK pode não estar preenchida)
+    const paciente = await Paciente.findByPk(pacienteId, { attributes: ['nome'] });
+    if (!paciente) return res.json({ totalInvestido: 0, totalNFs: 0, totalPendentes: 0 });
+
+    const { Op } = require('sequelize');
     const faturamentos = await Faturamento.findAll({
-      where: { paciente_id: pacienteId, clinicaId, declarar: true }
+      where: {
+        clinicaId,
+        declarar: true,
+        [Op.or]: [
+          { pacienteId },
+          { paciente: paciente.nome }
+        ]
+      }
     });
 
     const totalInvestido = faturamentos.reduce((sum, f) => sum + parseFloat(f.valor), 0);
