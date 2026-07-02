@@ -1,9 +1,9 @@
 /**
  * Controller de Anamneses
- * CRUD para modelos de anamnese
+ * CRUD para modelos de anamnese + respostas por paciente
  */
 
-const { Anamnese } = require('../models');
+const { Anamnese, Paciente } = require('../models');
 
 const listarAnamneses = async (req, res) => {
   try {
@@ -60,9 +60,53 @@ const deletarAnamnese = async (req, res) => {
   }
 };
 
+// Salva respostas preenchidas da anamnese para um paciente
+const salvarRespostaPaciente = async (req, res) => {
+  try {
+    const { pacienteId } = req.params;
+    const { anamneseId, anamneseTitulo, respostas } = req.body;
+    const clinicaId = req.user.clinicaId;
+
+    const paciente = await Paciente.findOne({ where: { id: pacienteId, clinica_id: clinicaId } });
+    if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+
+    const payload = JSON.stringify({ anamneseId, anamneseTitulo, respostas, respondidoEm: new Date().toISOString() });
+    await paciente.update({ anamnese_data: payload, anamnese_updated_at: new Date() });
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao salvar anamnese', detail: error.message });
+  }
+};
+
+// Busca respostas da anamnese de um paciente
+const buscarRespostaPaciente = async (req, res) => {
+  try {
+    const { pacienteId } = req.params;
+    const clinicaId = req.user.clinicaId;
+
+    const paciente = await Paciente.findOne({
+      where: { id: pacienteId, clinica_id: clinicaId },
+      attributes: ['id', 'anamnese_data', 'anamnese_updated_at']
+    });
+    if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+
+    let dados = null;
+    if (paciente.anamnese_data) {
+      try { dados = typeof paciente.anamnese_data === 'string' ? JSON.parse(paciente.anamnese_data) : paciente.anamnese_data; } catch {}
+    }
+
+    res.json({ dados, atualizadoEm: paciente.anamnese_updated_at });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar anamnese', detail: error.message });
+  }
+};
+
 module.exports = {
   listarAnamneses,
   criarAnamnese,
   atualizarAnamnese,
-  deletarAnamnese
+  deletarAnamnese,
+  salvarRespostaPaciente,
+  buscarRespostaPaciente,
 };

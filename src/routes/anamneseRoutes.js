@@ -23,4 +23,8 @@ router.put('/:id', anamneseController.atualizarAnamnese);
 // Deletar modelo de anamnese
 router.delete('/:id', anamneseController.deletarAnamnese);
 
+// Respostas de anamnese por paciente
+router.get('/paciente/:pacienteId', anamneseController.buscarRespostaPaciente);
+router.post('/paciente/:pacienteId', anamneseController.salvarRespostaPaciente);
+
 module.exports = router;

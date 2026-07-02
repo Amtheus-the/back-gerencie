@@ -2,22 +2,17 @@
 exports.resumoFinanceiroPaciente = async (req, res) => {
   try {
     const { pacienteId } = req.params;
-    const userId = req.user.id;
+    const clinicaId = req.user.clinicaId;
 
     const faturamentos = await Faturamento.findAll({
-      where: { pacienteId, userId }
+      where: { paciente_id: pacienteId, clinicaId, declarar: true }
     });
 
     const totalInvestido = faturamentos.reduce((sum, f) => sum + parseFloat(f.valor), 0);
-    // Ajuste o filtro abaixo conforme sua lógica de "em aberto" (exemplo: status !== 'pago')
-    const saldoAberto = faturamentos
-      .filter(f => !f.status || f.status !== 'pago')
-      .reduce((sum, f) => sum + parseFloat(f.valor), 0);
+    const totalNFs = faturamentos.filter(f => f.notaEmitida || f.reciboNome).length;
+    const totalPendentes = faturamentos.filter(f => !f.notaEmitida && !f.reciboNome).length;
 
-    res.json({
-      saldoAberto,
-      totalInvestido
-    });
+    res.json({ totalInvestido, totalNFs, totalPendentes });
   } catch (error) {
     res.status(500).json({ message: 'Erro ao buscar resumo financeiro', error: error.message });
   }

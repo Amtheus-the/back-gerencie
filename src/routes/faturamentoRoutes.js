@@ -17,6 +17,7 @@ router.use(verificarToken);
  * @access  Private
  */
 router.get('/parametros-municipio', faturamentoController.consultarParametrosMunicipio);
+router.get('/paciente/:pacienteId/resumo', faturamentoController.resumoFinanceiroPaciente);
 
 /**
  * @route   GET /api/faturamento
