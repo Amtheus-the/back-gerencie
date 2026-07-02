@@ -122,6 +122,14 @@ const Faturamento = sequelize.define('Faturamento', {
     field: 'recibo_tamanho',
     comment: 'Tamanho do arquivo em bytes'
   },
+  // ─── Declaração fiscal ───
+  declarar: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+    field: 'declarar',
+    comment: 'Se false, lançamento é apenas controle interno — não entra nos cálculos de imposto'
+  },
   // ─── Nota Fiscal ───
   notaEmitida: {
     type: DataTypes.BOOLEAN,

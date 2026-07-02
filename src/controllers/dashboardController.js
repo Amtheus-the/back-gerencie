@@ -43,20 +43,22 @@ exports.getMetricas = async (req, res) => {
     const dataFim = new Date(anoConsulta, mesConsulta, 0);
 
     console.log('[DASHBOARD] aniversariantes ok, buscando faturamentos...');
-    // Busca faturamentos PF do período
+    // Busca faturamentos PF do período (só os declarados para imposto)
     const faturamentosPF = await Faturamento.findAll({
       where: {
         clinicaId,
         tipoPessoa: 'PF',
+        declarar: true,
         data: { [Op.between]: [dataInicio, dataFim] }
       }
     });
 
-    // Busca faturamentos PJ do período
+    // Busca faturamentos PJ do período (só os declarados para imposto)
     const faturamentosPJ = await Faturamento.findAll({
       where: {
         clinicaId,
         tipoPessoa: 'PJ',
+        declarar: true,
         data: { [Op.between]: [dataInicio, dataFim] }
       }
     });
@@ -107,6 +109,7 @@ exports.getMetricas = async (req, res) => {
       where: {
         clinicaId,
         tipoPessoa: 'PJ',
+        declarar: true,
         data: { [Op.between]: [dataInicioRbt12, ultimoDiaMesAnterior] }
       }
     });

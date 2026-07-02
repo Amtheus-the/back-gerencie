@@ -676,11 +676,11 @@ exports.getInsights = async (req, res) => {
 
     // Busca dados financeiros dos dois meses (PF only para DARF, igual ao dashboard)
     const [fatPFAtual, fatPJAtual, despAtual, fatPFAnt, fatPJAnt, despAnt, clinica] = await Promise.all([
-      Faturamento.findAll({ where: { clinicaId, tipoPessoa: 'PF', data: { [Op.between]: [inicioMesAtual, fimMesAtual] } } }),
-      Faturamento.findAll({ where: { clinicaId, tipoPessoa: 'PJ', data: { [Op.between]: [inicioMesAtual, fimMesAtual] } } }),
+      Faturamento.findAll({ where: { clinicaId, tipoPessoa: 'PF', declarar: true, data: { [Op.between]: [inicioMesAtual, fimMesAtual] } } }),
+      Faturamento.findAll({ where: { clinicaId, tipoPessoa: 'PJ', declarar: true, data: { [Op.between]: [inicioMesAtual, fimMesAtual] } } }),
       Despesa.findAll({ where: { clinicaId, data: { [Op.between]: [inicioMesAtual, fimMesAtual] } } }),
-      Faturamento.findAll({ where: { clinicaId, tipoPessoa: 'PF', data: { [Op.between]: [inicioMesAnt, fimMesAnt] } } }),
-      Faturamento.findAll({ where: { clinicaId, tipoPessoa: 'PJ', data: { [Op.between]: [inicioMesAnt, fimMesAnt] } } }),
+      Faturamento.findAll({ where: { clinicaId, tipoPessoa: 'PF', declarar: true, data: { [Op.between]: [inicioMesAnt, fimMesAnt] } } }),
+      Faturamento.findAll({ where: { clinicaId, tipoPessoa: 'PJ', declarar: true, data: { [Op.between]: [inicioMesAnt, fimMesAnt] } } }),
       Despesa.findAll({ where: { clinicaId, data: { [Op.between]: [inicioMesAnt, fimMesAnt] } } }),
       Clinica.findByPk(clinicaId, { attributes: ['nome', 'tipoPessoa'] })
     ]);

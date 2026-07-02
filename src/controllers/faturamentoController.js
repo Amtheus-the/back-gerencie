@@ -110,7 +110,7 @@ exports.criarFaturamento = async (req, res) => {
   try {
   const { notificarNovoFaturamento } = require('../services/emailService');
   const userId = req.user.id;
-  let { descricao, valor, data, formaPagamento, paciente_id, paciente, tipoPessoa, observacoes, cpf } = req.body;
+  let { descricao, valor, data, formaPagamento, paciente_id, paciente, tipoPessoa, observacoes, cpf, declarar } = req.body;
   console.log('🔎 [DEBUG] Corpo da requisição faturamento:', req.body);
   const { Paciente } = require('../models');
   // Se vier só nome, buscar o id
@@ -149,7 +149,8 @@ exports.criarFaturamento = async (req, res) => {
       paciente,
       cpf,
       tipoPessoa,
-      observacoes
+      observacoes,
+      declarar: declarar !== undefined ? Boolean(declarar) : true,
     });
 
     res.status(201).json({
