@@ -84,6 +84,12 @@ const Paciente = sequelize.define('Paciente', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  odontogramaData: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    field: 'odontograma_data',
+    comment: 'Status dos dentes { "18": { status, procedimento, obs }, ... }'
+  },
   anamneseData: {
     type: DataTypes.JSON,
     allowNull: true,

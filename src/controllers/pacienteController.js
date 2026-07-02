@@ -214,6 +214,40 @@ class PacienteController {
       });
     }
   }
+  async buscarOdontograma(req, res) {
+    try {
+      const { id } = req.params;
+      const clinicaId = req.user.clinicaId;
+      const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId }, attributes: ['id', 'odontogramaData'] });
+      if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+      let dados = paciente.odontogramaData;
+      if (typeof dados === 'string') { try { dados = JSON.parse(dados); } catch { dados = {}; } }
+      res.json({ dados: dados || {} });
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao buscar odontograma', detail: error.message });
+    }
+  }
+
+  async salvarOdontograma(req, res) {
+    try {
+      const { id } = req.params;
+      const { dente, status, procedimento, obs } = req.body;
+      const clinicaId = req.user.clinicaId;
+      const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId } });
+      if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+      let dados = paciente.odontogramaData || {};
+      if (typeof dados === 'string') { try { dados = JSON.parse(dados); } catch { dados = {}; } }
+      if (status === null) {
+        delete dados[dente];
+      } else {
+        dados[dente] = { status, procedimento: procedimento || '', obs: obs || '', atualizadoEm: new Date().toISOString() };
+      }
+      await paciente.update({ odontogramaData: dados });
+      res.json({ success: true, dados });
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao salvar odontograma', detail: error.message });
+    }
+  }
 }
 
 module.exports = new PacienteController();

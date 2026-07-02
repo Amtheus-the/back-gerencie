@@ -17,6 +17,10 @@ router.get('/buscar', pacienteController.buscar);
 // Histórico de procedimentos do paciente
 router.get('/:id/historico', pacienteController.historicoProcedimentos);
 
+// Odontograma
+router.get('/:id/odontograma', pacienteController.buscarOdontograma);
+router.patch('/:id/odontograma', pacienteController.salvarOdontograma);
+
 // CRUD básico
 router.get('/', pacienteController.listar);
 router.get('/:id', pacienteController.buscarPorId);
