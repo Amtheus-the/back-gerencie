@@ -68,9 +68,12 @@ router.post('/', async (req, res) => {
     await Paciente.update({ ativo: true }, { where: { id: paciente_id } });
 
     // Buscar telefone do paciente
+    console.log('📱 [WhatsApp] Buscando paciente:', paciente_id);
     const paciente = await Paciente.findByPk(paciente_id);
+    console.log('📱 [WhatsApp] Paciente encontrado:', paciente ? paciente.nome : 'NÃO ENCONTRADO');
+    console.log('📱 [WhatsApp] Telefone raw:', paciente?.telefone);
+
     if (paciente && paciente.telefone) {
-      // Formata data/hora para padrão brasileiro
       function formatarDataHoraBR(isoString) {
         const data = new Date(isoString);
         const dia = String(data.getDate()).padStart(2, '0');
@@ -85,10 +88,19 @@ router.post('/', async (req, res) => {
       const axios = require('axios');
       const INSTANCE_ID = process.env.WAPI_INSTANCE_ID;
       const TOKEN = process.env.WAPI_TOKEN;
+
+      const telefoneFormatado = `55${paciente.telefone.replace(/\D/g, '')}`;
       const url = `https://api.w-api.app/v1/message/send-text?instanceId=${INSTANCE_ID}`;
+
+      console.log('📱 [WhatsApp] InstanceId:', INSTANCE_ID);
+      console.log('📱 [WhatsApp] Token presente:', TOKEN ? `${TOKEN.substring(0, 10)}...` : 'NÃO DEFINIDO');
+      console.log('📱 [WhatsApp] Telefone formatado:', telefoneFormatado);
+      console.log('📱 [WhatsApp] Mensagem:', mensagem);
+      console.log('📱 [WhatsApp] URL:', url);
+
       try {
         const resp = await axios.post(url, {
-          phone: `55${paciente.telefone.replace(/\D/g, '')}`,
+          phone: telefoneFormatado,
           message: mensagem,
           delayMessage: 2
         }, {
@@ -97,12 +109,15 @@ router.post('/', async (req, res) => {
             Authorization: `Bearer ${TOKEN}`
           }
         });
-        console.log('✅ WhatsApp enviado para paciente:', paciente.telefone, '| resp:', JSON.stringify(resp.data));
+        console.log('✅ [WhatsApp] Status HTTP:', resp.status);
+        console.log('✅ [WhatsApp] Resposta completa:', JSON.stringify(resp.data, null, 2));
       } catch (err) {
-        console.error('❌ Erro ao enviar mensagem WhatsApp:', err.response?.data || err.message);
+        console.error('❌ [WhatsApp] Erro HTTP status:', err.response?.status);
+        console.error('❌ [WhatsApp] Erro response data:', JSON.stringify(err.response?.data, null, 2));
+        console.error('❌ [WhatsApp] Erro message:', err.message);
       }
     } else {
-      console.warn('⚠️ Paciente sem telefone cadastrado, não foi possível enviar WhatsApp.');
+      console.warn('⚠️ [WhatsApp] Paciente sem telefone — id:', paciente_id, '| telefone:', paciente?.telefone);
     }
 
     res.status(201).json(novoAgendamento);
