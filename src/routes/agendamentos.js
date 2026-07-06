@@ -85,15 +85,11 @@ router.post('/', async (req, res) => {
       const axios = require('axios');
       const INSTANCE_ID = process.env.WAPI_INSTANCE_ID;
       const TOKEN = process.env.WAPI_TOKEN;
-      const url = `https://api.w-api.app/v1/message/send-button-actions?instanceId=${INSTANCE_ID}`;
+      const url = `https://api.w-api.app/v1/message/send-text?instanceId=${INSTANCE_ID}`;
       try {
-        await axios.post(url, {
-          phone: paciente.telefone.replace(/\D/g, ''), // só números
+        const resp = await axios.post(url, {
+          phone: `55${paciente.telefone.replace(/\D/g, '')}`,
           message: mensagem,
-          buttonActions: [
-            { type: "REPLAY", buttonText: "Sim" },
-            { type: "REPLAY", buttonText: "Não" }
-          ],
           delayMessage: 2
         }, {
           headers: {
@@ -101,7 +97,7 @@ router.post('/', async (req, res) => {
             Authorization: `Bearer ${TOKEN}`
           }
         });
-        console.log('✅ Mensagem interativa enviada para paciente:', paciente.telefone);
+        console.log('✅ WhatsApp enviado para paciente:', paciente.telefone, '| resp:', JSON.stringify(resp.data));
       } catch (err) {
         console.error('❌ Erro ao enviar mensagem WhatsApp:', err.response?.data || err.message);
       }
