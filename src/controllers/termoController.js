@@ -250,7 +250,7 @@ const sincronizarDocumento = async (req, res) => {
     if (!doc.autentiqueId) return res.status(400).json({ error: 'Documento não vinculado à Autentique' });
 
     const query = `
-      query GetDocument($id: UUID!) {
+      query GetDocument($id: String!) {
         document(id: $id) {
           id
           name
@@ -268,8 +268,12 @@ const sincronizarDocumento = async (req, res) => {
       { headers: { Authorization: `Bearer ${AUTENTIQUE_TOKEN}`, 'Content-Type': 'application/json' } }
     );
 
-    if (resp.data.errors) throw new Error(resp.data.errors[0].message);
+    if (resp.data.errors) {
+      console.error('[Autentique sincronizar] Erro GraphQL:', JSON.stringify(resp.data.errors));
+      throw new Error(resp.data.errors[0].message);
+    }
     const docAut = resp.data.data.document;
+    console.log('[Autentique sincronizar] doc:', JSON.stringify(docAut, null, 2));
 
     const todasAssinadas = docAut.signatures.every(s => s.signed?.at);
     const algumaAssinada = docAut.signatures.some(s => s.signed?.at);
