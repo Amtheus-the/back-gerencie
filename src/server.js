@@ -56,6 +56,8 @@ const corsOptions = {
 };
 app.options('*', cors(corsOptions));
 app.use(cors(corsOptions));
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 // Webhook WhatsApp 100% aberto
 app.use('/api/webhook-open-whatsapp', webhookOpenRoutes);
@@ -101,8 +103,6 @@ app.use((req, res, next) => {
   console.log(`[REQ] ${req.method} ${req.path} | Origin: ${req.headers.origin || 'none'}`);
   next();
 });
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 // Rota de debug para gerar token JWT pelo email (deve ser aberta)
 // jwt e User já importados no topo do arquivo
