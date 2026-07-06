@@ -146,26 +146,27 @@ const enviar = async (req, res) => {
     let link = null;
     let autentiqueId = null;
 
-    // Integração Autentique se token configurado
-    if (AUTENTIQUE_TOKEN) {
-      try {
-        console.log('[Autentique] Gerando PDF...');
-        const pdfBuffer = await gerarPDF(conteudo, termo.titulo);
-        console.log('[Autentique] Criando documento...');
-        const docAutentique = await criarDocumentoAutentique(pdfBuffer, termo.titulo, { nome: paciente.nome });
-        autentiqueId = docAutentique.id;
-        link = docAutentique.signatures?.[0]?.link?.short_link;
-        console.log('[Autentique] Documento criado:', autentiqueId, '| Link:', link);
-      } catch (err) {
-        console.error('[Autentique] Erro:', err.message);
-        // fallback para link interno
-      }
+    console.log('[Termo/enviar] AUTENTIQUE_TOKEN configurado:', !!AUTENTIQUE_TOKEN);
+    console.log('[Termo/enviar] AUTENTIQUE_SANDBOX:', AUTENTIQUE_SANDBOX);
+
+    if (!AUTENTIQUE_TOKEN) {
+      return res.status(500).json({ error: 'Integração de assinatura digital não configurada. Adicione AUTENTIQUE_TOKEN nas variáveis de ambiente.' });
     }
 
-    // Fallback: link interno do sistema
+    console.log('[Autentique] Gerando PDF do termo:', termo.titulo);
+    const pdfBuffer = await gerarPDF(conteudo, termo.titulo);
+    console.log('[Autentique] PDF gerado, tamanho:', pdfBuffer.length, 'bytes');
+
+    console.log('[Autentique] Criando documento para paciente:', paciente.nome);
+    const docAutentique = await criarDocumentoAutentique(pdfBuffer, termo.titulo, { nome: paciente.nome });
+    autentiqueId = docAutentique.id;
+    link = docAutentique.signatures?.[0]?.link?.short_link;
+    console.log('[Autentique] Documento criado! ID:', autentiqueId);
+    console.log('[Autentique] Link de assinatura:', link);
+    console.log('[Autentique] Signatures:', JSON.stringify(docAutentique.signatures, null, 2));
+
     if (!link) {
-      const frontendUrl = process.env.FRONTEND_URL || 'https://app.gerencieodonto.com.br';
-      link = `${frontendUrl}/assinar/${token}`;
+      return res.status(500).json({ error: 'Autentique não retornou link de assinatura. Verifique o token e tente novamente.' });
     }
 
     const doc = await DocumentoPaciente.create({
