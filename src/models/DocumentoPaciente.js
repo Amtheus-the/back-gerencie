@@ -14,6 +14,6 @@ const DocumentoPaciente = sequelize.define('DocumentoPaciente', {
   assinadoEm: { type: DataTypes.DATE, allowNull: true, field: 'assinado_em' },
   enviadoVia: { type: DataTypes.ENUM('whatsapp', 'email', 'link'), defaultValue: 'link', field: 'enviado_via' },
   autentiqueId: { type: DataTypes.STRING(100), allowNull: true, field: 'autentique_id' },
-}, { tableName: 'documentos', timestamps: true, underscored: true });
+}, { tableName: 'documentos_paciente', timestamps: true, underscored: true });
 
 module.exports = DocumentoPaciente;
