@@ -257,7 +257,7 @@ const sincronizarDocumento = async (req, res) => {
           data {
             id name
             signatures {
-              public_id name email action
+              public_id name email
               signed { created_at }
               link { short_link }
             }
@@ -284,8 +284,7 @@ const sincronizarDocumento = async (req, res) => {
     if (!docAut) return res.status(404).json({ error: 'Documento não encontrado na Autentique.' });
 
     const signatarios = docAut.signatures || [];
-    const pacienteSig = signatarios.find(s => s.name && s.link === null || s.signed?.created_at);
-    const todasAssinadas = signatarios.filter(s => s.action === 'SIGN').every(s => s.signed?.created_at);
+    const todasAssinadas = signatarios.length > 0 && signatarios.every(s => s.signed?.created_at);
     const algumaAssinada = signatarios.some(s => s.signed?.created_at);
 
     if (todasAssinadas && doc.status !== 'assinado') {
