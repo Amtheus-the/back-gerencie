@@ -250,25 +250,22 @@ const sincronizarDocumento = async (req, res) => {
     if (!doc) return res.status(404).json({ error: 'Documento não encontrado' });
     if (!doc.autentiqueId) return res.status(400).json({ error: 'Documento não vinculado à Autentique' });
 
-    // Buscar via listagem pois o ID retornado pela Autentique não é UUID padrão
     const query = `
-      query {
-        documents(page: 1) {
-          data {
-            id name
-            signatures {
-              public_id name email
-              signed { created_at }
-              link { short_link }
-            }
-            files { original signed }
+      query ($id: UUID!) {
+        document(id: $id) {
+          id name
+          signatures {
+            public_id name email
+            signed { created_at }
+            link { short_link }
           }
+          files { original signed }
         }
       }
     `;
 
     const resp = await axios.post(AUTENTIQUE_URL,
-      { query },
+      { query, variables: { id: doc.autentiqueId } },
       { headers: { Authorization: `Bearer ${AUTENTIQUE_TOKEN}`, 'Content-Type': 'application/json' } }
     );
 
@@ -277,20 +274,17 @@ const sincronizarDocumento = async (req, res) => {
       throw new Error(resp.data.errors[0].message);
     }
 
-    const todos = resp.data.data.documents.data;
-    const docAut = todos.find(d => d.id === doc.autentiqueId);
-    console.log('[Autentique sincronizar] doc encontrado:', docAut ? docAut.id : 'NÃO ENCONTRADO');
-
+    const docAut = resp.data.data.document;
     if (!docAut) return res.status(404).json({ error: 'Documento não encontrado na Autentique.' });
-    console.log('[Autentique sincronizar] signatures:', JSON.stringify(docAut.signatures, null, 2));
-    console.log('[Autentique sincronizar] files:', JSON.stringify(docAut.files, null, 2));
 
     const signatarios = docAut.signatures || [];
-    const todasAssinadas = signatarios.length > 0 && signatarios.every(s => s.signed?.created_at);
-    const algumaAssinada = signatarios.some(s => s.signed?.created_at);
+    // Ignora o slot do dono da conta (name: null) — ele nunca assina
+    const signatariosReais = signatarios.filter(s => s.name !== null);
+    const todasAssinadas = signatariosReais.length > 0 && signatariosReais.every(s => s.signed?.created_at);
+    const algumaAssinada = signatariosReais.some(s => s.signed?.created_at);
 
     if (todasAssinadas && doc.status !== 'assinado') {
-      const sigPac = signatarios.find(s => s.name && s.signed?.created_at);
+      const sigPac = signatariosReais.find(s => s.signed?.created_at);
       await doc.update({
         status: 'assinado',
         nomeAssinante: sigPac?.name || null,
