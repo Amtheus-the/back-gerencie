@@ -240,4 +240,62 @@ const listarDocumentos = async (req, res) => {
   }
 };
 
-module.exports = { listar, criar, atualizar, deletar, clonar, enviar, listarDocumentos };
+// Sincronizar status e buscar link de download de um documento via Autentique
+const sincronizarDocumento = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { clinicaId } = req.user;
+    const doc = await DocumentoPaciente.findOne({ where: { id, clinicaId } });
+    if (!doc) return res.status(404).json({ error: 'Documento não encontrado' });
+    if (!doc.autentiqueId) return res.status(400).json({ error: 'Documento não vinculado à Autentique' });
+
+    const query = `
+      query GetDocument($id: UUID!) {
+        document(id: $id) {
+          id
+          name
+          signatures {
+            public_id name email signed { at }
+            link { short_link }
+          }
+          files { original signed }
+        }
+      }
+    `;
+
+    const resp = await axios.post(AUTENTIQUE_URL,
+      { query, variables: { id: doc.autentiqueId } },
+      { headers: { Authorization: `Bearer ${AUTENTIQUE_TOKEN}`, 'Content-Type': 'application/json' } }
+    );
+
+    if (resp.data.errors) throw new Error(resp.data.errors[0].message);
+    const docAut = resp.data.data.document;
+
+    const todasAssinadas = docAut.signatures.every(s => s.signed?.at);
+    const algumaAssinada = docAut.signatures.some(s => s.signed?.at);
+
+    if (todasAssinadas && doc.status !== 'assinado') {
+      const sigPaciente = docAut.signatures.find(s => s.name && s.signed?.at);
+      await doc.update({
+        status: 'assinado',
+        nomeAssinante: sigPaciente?.name || null,
+        assinadoEm: sigPaciente?.signed?.at ? new Date(sigPaciente.signed.at) : new Date(),
+      });
+    }
+
+    res.json({
+      status: todasAssinadas ? 'assinado' : algumaAssinada ? 'parcial' : 'pendente',
+      downloadUrl: docAut.files?.signed || docAut.files?.original || null,
+      signatures: docAut.signatures.map(s => ({
+        name: s.name,
+        email: s.email,
+        signed: s.signed?.at || null,
+        link: s.link?.short_link || null,
+      })),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+};
+
+module.exports = { listar, criar, atualizar, deletar, clonar, enviar, listarDocumentos, sincronizarDocumento };

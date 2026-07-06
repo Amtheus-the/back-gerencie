@@ -12,5 +12,6 @@ router.delete('/:id', c.deletar);
 router.post('/:id/clonar', c.clonar);
 router.post('/enviar', c.enviar);
 router.get('/documentos', c.listarDocumentos);
+router.get('/documentos/:id/sincronizar', c.sincronizarDocumento);
 
 module.exports = router;
