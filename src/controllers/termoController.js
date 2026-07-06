@@ -3,20 +3,41 @@ const { Op } = require('sequelize');
 const crypto = require('crypto');
 const axios = require('axios');
 const FormData = require('form-data');
-const htmlPdf = require('html-pdf-node');
+const PDFDocument = require('pdfkit');
 
 const AUTENTIQUE_TOKEN = process.env.AUTENTIQUE_TOKEN;
 const AUTENTIQUE_URL = 'https://api.autentique.com.br/v2/graphql';
 const AUTENTIQUE_SANDBOX = process.env.AUTENTIQUE_SANDBOX === 'true';
 
+function stripHtml(html) {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/h[1-6]>/gi, '\n\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<li>/gi, '  • ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 async function gerarPDF(htmlContent, titulo) {
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-    <style>body{font-family:Arial,sans-serif;padding:40px;font-size:14px;line-height:1.6}
-    h2{font-size:16px}ul{margin-left:20px}</style></head>
-    <body>${htmlContent}</body></html>`;
-  const file = { content: html };
-  const options = { format: 'A4', margin: { top: '20mm', bottom: '20mm', left: '20mm', right: '20mm' } };
-  return htmlPdf.generatePdf(file, options);
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 60, size: 'A4' });
+    const buffers = [];
+    doc.on('data', chunk => buffers.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', reject);
+
+    doc.fontSize(14).font('Helvetica-Bold').text(titulo, { align: 'center' });
+    doc.moveDown();
+    doc.fontSize(11).font('Helvetica').text(stripHtml(htmlContent), { align: 'justify', lineGap: 4 });
+    doc.end();
+  });
 }
 
 async function criarDocumentoAutentique(pdfBuffer, titulo, signatario) {
