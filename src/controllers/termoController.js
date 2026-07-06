@@ -282,6 +282,8 @@ const sincronizarDocumento = async (req, res) => {
     console.log('[Autentique sincronizar] doc encontrado:', docAut ? docAut.id : 'NÃO ENCONTRADO');
 
     if (!docAut) return res.status(404).json({ error: 'Documento não encontrado na Autentique.' });
+    console.log('[Autentique sincronizar] signatures:', JSON.stringify(docAut.signatures, null, 2));
+    console.log('[Autentique sincronizar] files:', JSON.stringify(docAut.files, null, 2));
 
     const signatarios = docAut.signatures || [];
     const todasAssinadas = signatarios.length > 0 && signatarios.every(s => s.signed?.created_at);
