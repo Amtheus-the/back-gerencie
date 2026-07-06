@@ -2,6 +2,53 @@ const { Termo, DocumentoPaciente, Paciente, User } = require('../models');
 const { Op } = require('sequelize');
 const crypto = require('crypto');
 const axios = require('axios');
+const FormData = require('form-data');
+const htmlPdf = require('html-pdf-node');
+
+const AUTENTIQUE_TOKEN = process.env.AUTENTIQUE_TOKEN;
+const AUTENTIQUE_URL = 'https://api.autentique.com.br/v2/graphql';
+const AUTENTIQUE_SANDBOX = process.env.AUTENTIQUE_SANDBOX === 'true';
+
+async function gerarPDF(htmlContent, titulo) {
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <style>body{font-family:Arial,sans-serif;padding:40px;font-size:14px;line-height:1.6}
+    h2{font-size:16px}ul{margin-left:20px}</style></head>
+    <body>${htmlContent}</body></html>`;
+  const file = { content: html };
+  const options = { format: 'A4', margin: { top: '20mm', bottom: '20mm', left: '20mm', right: '20mm' } };
+  return htmlPdf.generatePdf(file, options);
+}
+
+async function criarDocumentoAutentique(pdfBuffer, titulo, signatario) {
+  const form = new FormData();
+
+  const query = `
+    mutation CreateDocumentMutation($document: DocumentInput!, $signers: [SignerInput!]!, $file: Upload!) {
+      createDocument(document: $document, signers: $signers, file: $file) {
+        id
+        name
+        signatures { public_id name email link { short_link } }
+      }
+    }
+  `;
+
+  const variables = {
+    document: { name: titulo, sandbox: AUTENTIQUE_SANDBOX },
+    signers: [{ name: signatario.nome, action: 'SIGN' }],
+    file: null,
+  };
+
+  form.append('operations', JSON.stringify({ query, variables }));
+  form.append('map', JSON.stringify({ file: ['variables.file'] }));
+  form.append('file', pdfBuffer, { filename: `${titulo}.pdf`, contentType: 'application/pdf' });
+
+  const resp = await axios.post(AUTENTIQUE_URL, form, {
+    headers: { Authorization: `Bearer ${AUTENTIQUE_TOKEN}`, ...form.getHeaders() },
+  });
+
+  if (resp.data.errors) throw new Error(resp.data.errors[0].message);
+  return resp.data.data.createDocument;
+}
 
 // Lista termos: padrões do sistema + os da clínica do usuário
 const listar = async (req, res) => {
@@ -80,8 +127,8 @@ const clonar = async (req, res) => {
 // Enviar documento para paciente assinar
 const enviar = async (req, res) => {
   try {
-    const { clinicaId, id: userId } = req.user;
-    const { pacienteId, termoId, via } = req.body; // via: 'whatsapp' | 'link'
+    const { clinicaId } = req.user;
+    const { pacienteId, termoId, via } = req.body;
 
     const paciente = await Paciente.findOne({ where: { id: pacienteId, clinica_id: clinicaId } });
     if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
@@ -89,15 +136,44 @@ const enviar = async (req, res) => {
     const termo = await Termo.findByPk(termoId);
     if (!termo) return res.status(404).json({ error: 'Termo não encontrado' });
 
+    // Substituir variáveis no conteúdo
+    const conteudo = (termo.conteudo || '')
+      .replace(/\{\{PACIENTE_NOME\}\}/g, paciente.nome || '')
+      .replace(/\{\{PACIENTE_CPF\}\}/g, paciente.cpf || '')
+      .replace(/\{\{DATA\}\}/g, new Date().toLocaleDateString('pt-BR'));
+
     const token = crypto.randomBytes(32).toString('hex');
+    let link = null;
+    let autentiqueId = null;
+
+    // Integração Autentique se token configurado
+    if (AUTENTIQUE_TOKEN) {
+      try {
+        console.log('[Autentique] Gerando PDF...');
+        const pdfBuffer = await gerarPDF(conteudo, termo.titulo);
+        console.log('[Autentique] Criando documento...');
+        const docAutentique = await criarDocumentoAutentique(pdfBuffer, termo.titulo, { nome: paciente.nome });
+        autentiqueId = docAutentique.id;
+        link = docAutentique.signatures?.[0]?.link?.short_link;
+        console.log('[Autentique] Documento criado:', autentiqueId, '| Link:', link);
+      } catch (err) {
+        console.error('[Autentique] Erro:', err.message);
+        // fallback para link interno
+      }
+    }
+
+    // Fallback: link interno do sistema
+    if (!link) {
+      const frontendUrl = process.env.FRONTEND_URL || 'https://app.gerencieodonto.com.br';
+      link = `${frontendUrl}/assinar/${token}`;
+    }
+
     const doc = await DocumentoPaciente.create({
       clinicaId, pacienteId, termoId, token,
       status: 'pendente',
       enviadoVia: via || 'link',
+      ...(autentiqueId && { autentiqueId }),
     });
-
-    const frontendUrl = process.env.FRONTEND_URL || 'https://app.gerencieodonto.com.br';
-    const link = `${frontendUrl}/assinar/${token}`;
 
     // Enviar via WhatsApp se solicitado
     if (via === 'whatsapp' && paciente.telefone) {
@@ -114,7 +190,7 @@ const enviar = async (req, res) => {
       }
     }
 
-    res.json({ success: true, link, documentoId: doc.id, token });
+    res.json({ success: true, link, documentoId: doc.id, token, via_autentique: !!autentiqueId });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

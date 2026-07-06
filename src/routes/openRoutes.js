@@ -207,4 +207,30 @@ router.post('/assinar/:token', async (req, res) => {
   }
 });
 
+// Webhook Autentique — atualiza status quando paciente assina pela plataforma deles
+router.post('/webhook-autentique', async (req, res) => {
+  try {
+    const { DocumentoPaciente } = require('../models');
+    const { event, document } = req.body;
+    console.log('[Autentique Webhook] event:', event, '| doc id:', document?.id);
+
+    if (event === 'signature_accepted' && document?.id) {
+      const signature = document.signatures?.find(s => s.signed?.at);
+      await DocumentoPaciente.update(
+        {
+          status: 'assinado',
+          nomeAssinante: signature?.name || null,
+          assinadoEm: signature?.signed?.at ? new Date(signature.signed.at) : new Date(),
+        },
+        { where: { autentiqueId: document.id } }
+      );
+    }
+
+    res.json({ received: true });
+  } catch (e) {
+    console.error('[Autentique Webhook] Erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
