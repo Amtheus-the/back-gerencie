@@ -243,6 +243,7 @@ const listarDocumentos = async (req, res) => {
 // Sincronizar status e buscar link de download de um documento via Autentique
 const sincronizarDocumento = async (req, res) => {
   try {
+    console.log('[sincronizar] iniciando para doc:', req.params.id);
     const { id } = req.params;
     const { clinicaId } = req.user;
     const doc = await DocumentoPaciente.findOne({ where: { id, clinicaId } });
@@ -298,6 +299,7 @@ const sincronizarDocumento = async (req, res) => {
       })),
     });
   } catch (e) {
+    console.error('[sincronizar] ERRO:', e.message, e.stack);
     res.status(500).json({ error: e.message });
   }
 };
