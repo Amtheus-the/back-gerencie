@@ -43,6 +43,20 @@ const webhookWhatsappRoutes = require('./routes/webhookWhatsapp');
 const openRoutes = require('./routes/openRoutes');
 const webhookOpenRoutes = require('./routes/webhookOpenRoutes');
 const app = express();
+
+// CORS deve ser o primeiro middleware — antes de qualquer rota
+const corsOptions = {
+  origin: [
+    'https://app.gerencieodonto.com.br',
+    'http://localhost:3000',
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+app.options('*', cors(corsOptions));
+app.use(cors(corsOptions));
+
 // Webhook WhatsApp 100% aberto
 app.use('/api/webhook-open-whatsapp', webhookOpenRoutes);
 // Webhook Asaas 100% aberto (sem JWT)
@@ -83,19 +97,6 @@ app.get('/api/teste-aberto', (req, res) => {
 });
 
 // Middlewares
-// Permite CORS para localhost e produção por padrão, ou usa variável de ambiente CORS_ORIGIN
-// Libera CORS apenas para o domínio do front-end em produção
-const corsOptions = {
-  origin: [
-    'https://app.gerencieodonto.com.br',
-    'http://localhost:3000',
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-};
-app.options('*', cors(corsOptions));
-app.use(cors(corsOptions));
 app.use((req, res, next) => {
   console.log(`[REQ] ${req.method} ${req.path} | Origin: ${req.headers.origin || 'none'}`);
   next();
