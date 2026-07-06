@@ -181,7 +181,8 @@ const enviar = async (req, res) => {
     console.log('[Autentique] Criando documento para paciente:', paciente.nome);
     const docAutentique = await criarDocumentoAutentique(pdfBuffer, termo.titulo, { nome: paciente.nome });
     autentiqueId = docAutentique.id;
-    link = docAutentique.signatures?.[0]?.link?.short_link;
+    const sigPaciente = docAutentique.signatures?.find(s => s.link?.short_link);
+    link = sigPaciente?.link?.short_link;
     console.log('[Autentique] Documento criado! ID:', autentiqueId);
     console.log('[Autentique] Link de assinatura:', link);
     console.log('[Autentique] Signatures:', JSON.stringify(docAutentique.signatures, null, 2));
