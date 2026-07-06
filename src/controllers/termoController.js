@@ -250,22 +250,25 @@ const sincronizarDocumento = async (req, res) => {
     if (!doc) return res.status(404).json({ error: 'Documento não encontrado' });
     if (!doc.autentiqueId) return res.status(400).json({ error: 'Documento não vinculado à Autentique' });
 
+    // Buscar via listagem pois o ID retornado pela Autentique não é UUID padrão
     const query = `
-      query GetDocument($id: String!) {
-        document(id: $id) {
-          id
-          name
-          signatures {
-            public_id name email signed { at }
-            link { short_link }
+      query {
+        documents(page: 1) {
+          data {
+            id name
+            signatures {
+              public_id name email action
+              signed { created_at }
+              link { short_link }
+            }
+            files { original signed }
           }
-          files { original signed }
         }
       }
     `;
 
     const resp = await axios.post(AUTENTIQUE_URL,
-      { query, variables: { id: doc.autentiqueId } },
+      { query },
       { headers: { Authorization: `Bearer ${AUTENTIQUE_TOKEN}`, 'Content-Type': 'application/json' } }
     );
 
@@ -273,28 +276,34 @@ const sincronizarDocumento = async (req, res) => {
       console.error('[Autentique sincronizar] Erro GraphQL:', JSON.stringify(resp.data.errors));
       throw new Error(resp.data.errors[0].message);
     }
-    const docAut = resp.data.data.document;
-    console.log('[Autentique sincronizar] doc:', JSON.stringify(docAut, null, 2));
 
-    const todasAssinadas = docAut.signatures.every(s => s.signed?.at);
-    const algumaAssinada = docAut.signatures.some(s => s.signed?.at);
+    const todos = resp.data.data.documents.data;
+    const docAut = todos.find(d => d.id === doc.autentiqueId);
+    console.log('[Autentique sincronizar] doc encontrado:', docAut ? docAut.id : 'NÃO ENCONTRADO');
+
+    if (!docAut) return res.status(404).json({ error: 'Documento não encontrado na Autentique.' });
+
+    const signatarios = docAut.signatures || [];
+    const pacienteSig = signatarios.find(s => s.name && s.link === null || s.signed?.created_at);
+    const todasAssinadas = signatarios.filter(s => s.action === 'SIGN').every(s => s.signed?.created_at);
+    const algumaAssinada = signatarios.some(s => s.signed?.created_at);
 
     if (todasAssinadas && doc.status !== 'assinado') {
-      const sigPaciente = docAut.signatures.find(s => s.name && s.signed?.at);
+      const sigPac = signatarios.find(s => s.name && s.signed?.created_at);
       await doc.update({
         status: 'assinado',
-        nomeAssinante: sigPaciente?.name || null,
-        assinadoEm: sigPaciente?.signed?.at ? new Date(sigPaciente.signed.at) : new Date(),
+        nomeAssinante: sigPac?.name || null,
+        assinadoEm: sigPac?.signed?.created_at ? new Date(sigPac.signed.created_at) : new Date(),
       });
     }
 
     res.json({
       status: todasAssinadas ? 'assinado' : algumaAssinada ? 'parcial' : 'pendente',
       downloadUrl: docAut.files?.signed || docAut.files?.original || null,
-      signatures: docAut.signatures.map(s => ({
+      signatures: signatarios.map(s => ({
         name: s.name,
         email: s.email,
-        signed: s.signed?.at || null,
+        signed: s.signed?.created_at || null,
         link: s.link?.short_link || null,
       })),
     });
