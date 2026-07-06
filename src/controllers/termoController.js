@@ -54,7 +54,7 @@ async function criarDocumentoAutentique(pdfBuffer, titulo, signatario) {
   `;
 
   const variables = {
-    document: { name: titulo, sandbox: AUTENTIQUE_SANDBOX },
+    document: { name: titulo },
     signers: [{ name: signatario.nome, action: 'SIGN' }],
     file: null,
   };
