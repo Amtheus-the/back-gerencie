@@ -18,6 +18,8 @@ const Orcamento = require('./Orcamento');
 const Agendamento = require('./Agendamento');
 const CarneLeao = require('./CarneLeao');
 const Sugestao  = require('./Sugestao');
+const Termo = require('./Termo');
+const DocumentoPaciente = require('./DocumentoPaciente');
 
 // Relacionamentos do Orcamento
 Orcamento.belongsTo(Agendamento, { foreignKey: 'agendamento_id', as: 'agendamento' });
@@ -255,6 +257,12 @@ Anamnese.belongsTo(Clinica, {
   as: 'clinica'
 });
 
+// Termos e Documentos
+Termo.hasMany(DocumentoPaciente, { foreignKey: 'termoId', as: 'documentos' });
+DocumentoPaciente.belongsTo(Termo, { foreignKey: 'termoId', as: 'termo' });
+Paciente.hasMany(DocumentoPaciente, { foreignKey: 'pacienteId', as: 'documentos' });
+DocumentoPaciente.belongsTo(Paciente, { foreignKey: 'pacienteId', as: 'paciente' });
+
 // Sugestão pertence a User e Clinica
 Sugestao.belongsTo(User,    { foreignKey: 'userId',    as: 'usuario' });
 Sugestao.belongsTo(Clinica, { foreignKey: 'clinicaId', as: 'clinica' });
@@ -276,5 +284,7 @@ module.exports = {
   Orcamento,
   Anamnese,
   CarneLeao,
-  Sugestao
+  Sugestao,
+  Termo,
+  DocumentoPaciente,
 };

@@ -149,4 +149,62 @@ router.get('/ping', (req, res) => {
   res.send('Ping aberto funcionando!');
 });
 
+// ─── Assinatura de documentos (sem login) ───────────────────────────────────
+
+// Buscar documento pelo token (paciente abre o link)
+router.get('/assinar/:token', async (req, res) => {
+  try {
+    const { DocumentoPaciente, Termo, Paciente } = require('../models');
+    const doc = await DocumentoPaciente.findOne({
+      where: { token: req.params.token },
+      include: [
+        { model: Termo, as: 'termo' },
+        { model: Paciente, as: 'paciente', attributes: ['nome', 'cpfCnpj', 'telefone'] },
+      ],
+    });
+    if (!doc) return res.status(404).json({ error: 'Documento não encontrado ou link inválido.' });
+    res.json({
+      id: doc.id,
+      status: doc.status,
+      titulo: doc.termo.titulo,
+      tipo: doc.termo.tipo,
+      conteudo: doc.termo.conteudo,
+      pacienteNome: doc.paciente.nome,
+      pacienteCpf: doc.paciente.cpfCnpj,
+      assinadoEm: doc.assinadoEm,
+      nomeAssinante: doc.nomeAssinante,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Paciente assina o documento
+router.post('/assinar/:token', async (req, res) => {
+  try {
+    const { DocumentoPaciente } = require('../models');
+    const { nomeAssinante, cpfAssinante, aceito } = req.body;
+
+    if (!aceito) return res.status(400).json({ error: 'Você precisa aceitar os termos para assinar.' });
+    if (!nomeAssinante?.trim()) return res.status(400).json({ error: 'Nome é obrigatório.' });
+
+    const doc = await DocumentoPaciente.findOne({ where: { token: req.params.token } });
+    if (!doc) return res.status(404).json({ error: 'Documento não encontrado.' });
+    if (doc.status === 'assinado') return res.status(400).json({ error: 'Documento já foi assinado.' });
+
+    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+    await doc.update({
+      status: 'assinado',
+      nomeAssinante: nomeAssinante.trim(),
+      cpfAssinante: cpfAssinante?.trim() || null,
+      ipAssinante: ip,
+      assinadoEm: new Date(),
+    });
+
+    res.json({ success: true, assinadoEm: doc.assinadoEm });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

@@ -150,6 +150,8 @@ const sugestaoRoutes = require('./routes/sugestaoRoutes');
 app.use('/api/sugestoes', sugestaoRoutes);
 const secretariaRoutes = require('./routes/secretariaRoutes');
 app.use('/api/secretarias', secretariaRoutes);
+const termoRoutes = require('./routes/termoRoutes');
+app.use('/api/termos', termoRoutes);
 
 // Rota de debug para gerar token JWT pelo email
 const jwt = require('jsonwebtoken');
