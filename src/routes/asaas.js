@@ -6,7 +6,7 @@ const { Clinica } = require('../models');
 const _rawKey = process.env.ASAAS_API_KEY || '';
 const ASAAS_API_KEY = _rawKey.startsWith('$') ? _rawKey : '$' + _rawKey;
 const ASAAS_API_URL = process.env.ASAAS_API_URL || 'https://api.asaas.com/v3';
-const VALOR_PRO = 89.90;
+const VALOR_PRO = 149.90;
 
 const asaasHeaders = {
   'Content-Type': 'application/json',
