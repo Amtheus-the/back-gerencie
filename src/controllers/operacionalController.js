@@ -9,6 +9,7 @@ const { sequelize } = require('../config/database');
 const path = require('path');
 const fs = require('fs').promises;
 const axios = require('axios');
+const { getPresignedUrl, extractS3Key } = require('../config/s3');
 
 /**
  * Listar usuários com resumo para painel operacional
@@ -777,6 +778,35 @@ exports.registrarNotaManual = async (req, res) => {
   } catch (error) {
     console.error('Erro ao registrar nota manual:', error.message);
     return res.status(500).json({ success: false, message: 'Erro ao registrar nota manual', error: error.message });
+  }
+};
+
+/**
+ * Gerar link temporário para visualizar/baixar a nota fiscal anexada
+ * GET /api/operacional/faturamentos/:id/nota-manual
+ */
+exports.visualizarNotaManual = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const faturamento = await Faturamento.findByPk(id, {
+      attributes: ['id', 'notaFiscalUrl']
+    });
+    if (!faturamento || !faturamento.notaFiscalUrl) {
+      return res.status(404).json({ success: false, message: 'Nota fiscal não encontrada' });
+    }
+
+    const key = extractS3Key(faturamento.notaFiscalUrl);
+    if (!key) {
+      // URL externa (ex.: NuvemFiscal), não é um arquivo no S3 — retorna a própria URL
+      return res.json({ url: faturamento.notaFiscalUrl });
+    }
+
+    const presignedUrl = getPresignedUrl(key, 900); // válida por 15 min
+    return res.json({ url: presignedUrl });
+  } catch (error) {
+    console.error('Erro ao gerar link da nota fiscal:', error.message);
+    return res.status(500).json({ success: false, message: 'Erro ao gerar link da nota fiscal', error: error.message });
   }
 };
 

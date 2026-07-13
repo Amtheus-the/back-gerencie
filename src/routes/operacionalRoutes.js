@@ -146,6 +146,9 @@ const uploadNotaManual = multer({
 });
 router.post('/faturamentos/:id/nota-manual', uploadNotaManual.single('nota'), operacionalController.registrarNotaManual);
 
+// Visualizar/baixar a nota fiscal anexada manualmente
+router.get('/faturamentos/:id/nota-manual', operacionalController.visualizarNotaManual);
+
 // Cancelar nota fiscal junto à prefeitura (admin)
 router.delete('/faturamentos/:id/nota', operacionalController.cancelarNotaFiscalAdmin);
 
