@@ -58,6 +58,7 @@ const authMiddleware = async (req, res, next) => {
       id: user.id,
       email: user.email,
       nome: user.nome,
+      cro: user.cro,
       isAdmin: user.isAdmin,
       clinicaId: user.clinicaId,
       tipoPessoa: user.clinica?.tipoPessoa || 'PF',

@@ -161,6 +161,8 @@ const enviar = async (req, res) => {
     const conteudo = (termo.conteudo || '')
       .replace(/\{\{PACIENTE_NOME\}\}/g, paciente.nome || '')
       .replace(/\{\{PACIENTE_CPF\}\}/g, paciente.cpf || '')
+      .replace(/\{\{DENTISTA_NOME\}\}/g, req.user.nome || '')
+      .replace(/\{\{DENTISTA_CRO\}\}/g, req.user.cro || '')
       .replace(/\{\{DATA\}\}/g, new Date().toLocaleDateString('pt-BR'));
 
     const token = crypto.randomBytes(32).toString('hex');
