@@ -90,7 +90,7 @@ router.post('/', async (req, res) => {
       const TOKEN = process.env.WAPI_TOKEN;
 
       const telefoneFormatado = `55${paciente.telefone.replace(/\D/g, '')}`;
-      const url = `https://api.w-api.app/v1/message/send-text?instanceId=${INSTANCE_ID}`;
+      const url = `https://api.w-api.app/v1/message/send-button-list?instanceId=${INSTANCE_ID}`;
 
       console.log('📱 [WhatsApp] InstanceId:', INSTANCE_ID);
       console.log('📱 [WhatsApp] Token presente:', TOKEN ? `${TOKEN.substring(0, 10)}...` : 'NÃO DEFINIDO');
@@ -102,6 +102,10 @@ router.post('/', async (req, res) => {
         const resp = await axios.post(url, {
           phone: telefoneFormatado,
           message: mensagem,
+          buttons: [
+            { buttonId: 'confirmar', label: 'Sim' },
+            { buttonId: 'cancelar', label: 'Não' }
+          ],
           delayMessage: 2
         }, {
           headers: {

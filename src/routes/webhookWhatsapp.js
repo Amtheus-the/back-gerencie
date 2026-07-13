@@ -35,17 +35,39 @@ router.post('/ao_enviar', async (req, res) => {
 
 // Webhook para receber mensagens do WhatsApp (sem autenticação)
 router.post('/', async (req, res) => {
-  console.log('[WHATSAPP][RECEBIDO] Body:', req.body);
+  console.log('[WHATSAPP][RECEBIDO] Body:', JSON.stringify(req.body, null, 2));
   try {
     const { body } = req;
-    // Exemplo de payload esperado:
-    // {
-    //   "phone": "5511999999999",
-    //   "message": "sim" ou "não" ou "nao"
-    // }
-    const phone = body.phone?.replace(/\D/g, '');
-    const mensagem = body.message?.trim().toLowerCase();
-    if (!phone || !mensagem) {
+
+    // Ignora eventos que não são de mensagem recebida do paciente (ex: webhookDelivery, fromMe: true)
+    if (body.fromMe === true) {
+      return res.json({ success: true, ignorado: 'mensagem enviada por nós mesmos' });
+    }
+
+    // Telefone: tenta o formato antigo (flat) e o formato real da W-API (sender/chat)
+    const phoneRaw = body.phone || body.sender?.id || body.chat?.id || '';
+    const phone = phoneRaw.replace(/\D/g, '');
+
+    // Resposta de clique em botão (formato ainda não confirmado — tenta os campos mais prováveis)
+    const buttonId =
+      body.msgContent?.buttonsResponseMessage?.selectedButtonId ||
+      body.msgContent?.templateButtonReplyMessage?.selectedId ||
+      null;
+    const buttonText =
+      body.msgContent?.buttonsResponseMessage?.selectedDisplayText ||
+      body.msgContent?.templateButtonReplyMessage?.selectedDisplayText ||
+      null;
+
+    // Texto normal digitado (compatibilidade com o formato antigo + formato real da W-API)
+    const textoLivre =
+      body.message ||
+      body.msgContent?.conversation ||
+      body.msgContent?.extendedTextMessage?.text ||
+      null;
+
+    const mensagem = (buttonText || textoLivre)?.trim().toLowerCase();
+
+    if (!phone || (!mensagem && !buttonId)) {
       return res.status(400).json({ error: 'Dados insuficientes.' });
     }
 
@@ -64,15 +86,15 @@ router.post('/', async (req, res) => {
       return res.status(404).json({ error: 'Agendamento não encontrado.' });
     }
 
-    // Atualiza status conforme resposta
+    // Atualiza status conforme resposta (clique no botão tem prioridade sobre texto digitado)
     let novoStatus = agendamento.status;
-    if (mensagem === 'sim') {
+    if (buttonId === 'confirmar' || mensagem === 'sim') {
       novoStatus = 'confirmado';
-      console.log(`[WHATSAPP] Mensagem recebida do paciente: SIM`);
+      console.log(`[WHATSAPP] Resposta do paciente: SIM (buttonId=${buttonId})`);
     }
-    else if (mensagem === 'não' || mensagem === 'nao') {
+    else if (buttonId === 'cancelar' || mensagem === 'não' || mensagem === 'nao') {
       novoStatus = 'cancelado';
-      console.log(`[WHATSAPP] Mensagem recebida do paciente: NÃO`);
+      console.log(`[WHATSAPP] Resposta do paciente: NÃO (buttonId=${buttonId})`);
     }
     else if (agendamento.status !== 'confirmado' && agendamento.status !== 'cancelado') {
       novoStatus = 'aguardando';
