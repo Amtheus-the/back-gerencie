@@ -9,7 +9,6 @@ const { sequelize } = require('../config/database');
 const path = require('path');
 const fs = require('fs').promises;
 const axios = require('axios');
-const { getPresignedUrl, extractS3Key } = require('../config/s3');
 
 /**
  * Listar usuários com resumo para painel operacional
@@ -782,31 +781,50 @@ exports.registrarNotaManual = async (req, res) => {
 };
 
 /**
- * Gerar link temporário para visualizar/baixar a nota fiscal anexada
+ * Baixar/visualizar o PDF da nota fiscal de um faturamento (admin)
+ * Funciona tanto para NF anexada manualmente (arquivo no S3) quanto para
+ * NF emitida via API (busca o PDF direto na Nuvem Fiscal)
  * GET /api/operacional/faturamentos/:id/nota-manual
  */
 exports.visualizarNotaManual = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const faturamento = await Faturamento.findByPk(id, {
-      attributes: ['id', 'notaFiscalUrl']
-    });
-    if (!faturamento || !faturamento.notaFiscalUrl) {
+    const faturamento = await Faturamento.findByPk(id);
+    if (!faturamento) {
+      return res.status(404).json({ success: false, message: 'Faturamento não encontrado' });
+    }
+
+    const isManual = faturamento.notaFiscalUrl && (
+      !faturamento.numeroNota || String(faturamento.numeroNota).startsWith('MANUAL')
+    );
+
+    if (isManual) {
+      const response = await axios.get(faturamento.notaFiscalUrl, { responseType: 'arraybuffer' });
+      const nomeArquivo = faturamento.notaFiscalUrl.split('/').pop() || 'nota-fiscal.pdf';
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${nomeArquivo}"`);
+      return res.send(response.data);
+    }
+
+    if (!faturamento.numeroNota) {
       return res.status(404).json({ success: false, message: 'Nota fiscal não encontrada' });
     }
 
-    const key = extractS3Key(faturamento.notaFiscalUrl);
-    if (!key) {
-      // URL externa (ex.: NuvemFiscal), não é um arquivo no S3 — retorna a própria URL
-      return res.json({ url: faturamento.notaFiscalUrl });
-    }
+    const { getNuvemFiscalToken } = require('../services/nuvemFiscalService');
+    const token = await getNuvemFiscalToken();
 
-    const presignedUrl = getPresignedUrl(key, 900); // válida por 15 min
-    return res.json({ url: presignedUrl });
+    const response = await axios.get(
+      `https://api.nuvemfiscal.com.br/nfse/${faturamento.numeroNota}/pdf`,
+      { headers: { Authorization: `Bearer ${token}` }, responseType: 'arraybuffer' }
+    );
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="nota-${faturamento.numeroNota}.pdf"`);
+    return res.send(response.data);
   } catch (error) {
-    console.error('Erro ao gerar link da nota fiscal:', error.message);
-    return res.status(500).json({ success: false, message: 'Erro ao gerar link da nota fiscal', error: error.message });
+    console.error('Erro ao baixar PDF da nota (admin):', error.response?.status, error.response?.data?.toString?.() || error.message);
+    return res.status(500).json({ success: false, message: 'Erro ao baixar PDF da nota fiscal' });
   }
 };
 
