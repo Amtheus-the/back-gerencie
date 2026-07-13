@@ -219,15 +219,19 @@ router.post('/webhook-autentique', async (req, res) => {
 
     if ((event === 'document.finished' || event === 'signature_accepted') && document?.id) {
       const sigPaciente = document.signatures?.find(s => s.name && (s.signed?.created_at || s.signed?.at));
-      await DocumentoPaciente.update(
-        {
-          status: 'assinado',
-          nomeAssinante: sigPaciente?.name || null,
-          assinadoEm: new Date(),
-        },
-        { where: { autentiqueId: document.id } }
-      );
-      console.log('[Autentique Webhook] ✅ Status atualizado para assinado | doc:', document.id);
+      if (sigPaciente) {
+        await DocumentoPaciente.update(
+          {
+            status: 'assinado',
+            nomeAssinante: sigPaciente.name,
+            assinadoEm: sigPaciente.signed?.created_at ? new Date(sigPaciente.signed.created_at) : new Date(),
+          },
+          { where: { autentiqueId: document.id } }
+        );
+        console.log('[Autentique Webhook] ✅ Status atualizado para assinado | doc:', document.id);
+      } else {
+        console.log('[Autentique Webhook] ⚠️ Evento recebido sem assinatura confirmada do paciente, ignorando | doc:', document.id);
+      }
     }
 
     res.json({ received: true });
