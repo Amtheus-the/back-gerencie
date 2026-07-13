@@ -7,6 +7,7 @@ const router = express.Router();
 // Webhook para status da mensagem do WhatsApp (sem autenticação)
 router.post('/webhook-whatsapp/status_da_mensagem', async (req, res) => {
   try {
+    console.log('[WHATSAPP][STATUS_DA_MENSAGEM] Body:', JSON.stringify(req.body, null, 2));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -16,6 +17,7 @@ router.post('/webhook-whatsapp/status_da_mensagem', async (req, res) => {
 // Webhook para ao_enviar do WhatsApp (sem autenticação)
 router.post('/webhook-whatsapp/ao_enviar', async (req, res) => {
   try {
+    console.log('[WHATSAPP][AO_ENVIAR] Body:', JSON.stringify(req.body, null, 2));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -47,11 +49,16 @@ router.post('/webhook-whatsapp', async (req, res) => {
     }
     console.log('🔔 [Webhook] Dados recebidos:', body);
 
-    // Extrai telefone e resposta do usuário do objeto recebido
+    // Ignora eventos de mensagens enviadas por nós mesmos (ex: confirmação de entrega)
+    if (body.fromMe === true) {
+      console.log('ℹ️ [Webhook] Ignorando evento fromMe=true');
+      return res.json({ success: true, ignorado: 'mensagem enviada por nós mesmos' });
+    }
 
     // Extrai telefone e resposta do usuário do objeto recebido
     let phone = null;
     let message = null;
+    let buttonId = null;
     let agendamento_id = null;
 
     // Tenta extrair telefone do campo chat.id ou sender.id
@@ -61,25 +68,34 @@ router.post('/webhook-whatsapp', async (req, res) => {
       phone = body.sender.id;
     }
 
-    // Tenta extrair resposta do usuário do campo msgContent.templateButtonReplyMessage.selectedDisplayText
-    if (body.msgContent && body.msgContent.templateButtonReplyMessage && body.msgContent.templateButtonReplyMessage.selectedDisplayText) {
-      message = body.msgContent.templateButtonReplyMessage.selectedDisplayText;
+    // Resposta de clique em botão — cobre os dois formatos de botão da W-API:
+    // "templateButtonReplyMessage" (endpoint de botões de ação) e
+    // "buttonsResponseMessage" (endpoint send-button-list, usado na confirmação de agendamento)
+    const tmplReply = body.msgContent?.templateButtonReplyMessage;
+    const btnsReply = body.msgContent?.buttonsResponseMessage;
+    if (tmplReply?.selectedDisplayText) {
+      message = tmplReply.selectedDisplayText;
+      buttonId = tmplReply.selectedId || null;
+      agendamento_id = tmplReply.contextInfo?.agendamento_id || null;
+    } else if (btnsReply?.selectedDisplayText || btnsReply?.selectedButtonId) {
+      message = btnsReply.selectedDisplayText || null;
+      buttonId = btnsReply.selectedButtonId || null;
     }
 
-    // Tenta extrair agendamento_id do campo contextInfo, se existir (ajuste conforme sua integração)
-    if (body.msgContent && body.msgContent.templateButtonReplyMessage && body.msgContent.templateButtonReplyMessage.contextInfo && body.msgContent.templateButtonReplyMessage.contextInfo.agendamento_id) {
-      agendamento_id = body.msgContent.templateButtonReplyMessage.contextInfo.agendamento_id;
+    // Se não veio de botão, tenta texto normal digitado
+    if (!message && !buttonId) {
+      message = body.msgContent?.conversation || body.msgContent?.extendedTextMessage?.text || body.message || null;
     }
 
-    console.log('🔔 [Webhook] Dados extraídos:', { phone, message, agendamento_id });
-    if ((!phone && !agendamento_id) || !message) {
+    console.log('🔔 [Webhook] Dados extraídos:', { phone, message, buttonId, agendamento_id });
+    if ((!phone && !agendamento_id) || (!message && !buttonId)) {
       console.log('❌ [Webhook] Dados insuficientes.');
       return res.status(400).json({ error: 'Dados insuficientes.' });
     }
 
     const { Agendamento, Paciente } = require('../models');
     let agendamento = null;
-    const mensagem = message.trim().toLowerCase();
+    const mensagem = message?.trim().toLowerCase() || '';
 
     if (agendamento_id) {
       agendamento = await Agendamento.findByPk(agendamento_id);
@@ -117,11 +133,11 @@ router.post('/webhook-whatsapp', async (req, res) => {
       console.log('🟡 [Webhook] Status alterado para "aguardando"');
     }
 
-    // Atualiza status conforme resposta
+    // Atualiza status conforme resposta (clique no botão tem prioridade sobre texto digitado)
     let novoStatus = agendamento.status;
-    if (mensagem === 'sim') {
+    if (buttonId === 'confirmar' || mensagem === 'sim') {
       novoStatus = 'confirmado';
-    } else if (mensagem === 'não' || mensagem === 'nao') {
+    } else if (buttonId === 'cancelar' || mensagem === 'não' || mensagem === 'nao') {
       novoStatus = 'cancelado';
     }
     if (novoStatus !== agendamento.status) {
