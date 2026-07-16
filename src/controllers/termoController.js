@@ -319,4 +319,4 @@ const sincronizarDocumento = async (req, res) => {
   }
 };
 
-module.exports = { listar, criar, atualizar, deletar, clonar, enviar, listarDocumentos, sincronizarDocumento, gerarPDF };
+module.exports = { listar, criar, atualizar, deletar, clonar, enviar, listarDocumentos, sincronizarDocumento, gerarPDF, criarDocumentoAutentique };

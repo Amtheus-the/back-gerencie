@@ -222,37 +222,65 @@ router.post('/assinar/:token', async (req, res) => {
     if (doc.status === 'assinado') return res.status(400).json({ error: 'Documento já foi assinado.' });
 
     const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+    const temPerguntas = Array.isArray(respostas) && respostas.length > 0 && doc.termo;
+
+    // Termo sem perguntas (responsabilidade "simples" enviado por este link): mantém o
+    // comportamento antigo — consentimento registrado diretamente por nós, sem Autentique.
+    if (!temPerguntas) {
+      await doc.update({
+        status: 'assinado',
+        nomeAssinante: nomeAssinante.trim(),
+        cpfAssinante: cpfAssinante?.trim() || null,
+        ipAssinante: ip,
+        assinadoEm: new Date(),
+      });
+      return res.json({ success: true, assinadoEm: doc.assinadoEm });
+    }
+
+    // Anamnese (ou qualquer termo com perguntas): agora que temos as respostas, geramos o
+    // PDF final preenchido e só então criamos o documento na Autentique — a assinatura
+    // oficial (com QR code de validação) acontece lá, então mandamos o paciente pra esse link.
+    const { gerarPDF, criarDocumentoAutentique } = require('../controllers/termoController');
+    const { s3, S3_BUCKET, S3_REGION } = require('../config/s3');
+
+    const conteudoPreenchido = preencherRespostasNoConteudo(doc.termo.conteudo || '', respostas)
+      .replace(/\{\{PACIENTE_NOME\}\}/g, nomeAssinante.trim())
+      .replace(/\{\{PACIENTE_CPF\}\}/g, cpfAssinante?.trim() || '')
+      .replace(/\{\{DATA\}\}/g, new Date().toLocaleDateString('pt-BR'));
+    const pdfBuffer = await gerarPDF(conteudoPreenchido, doc.termo.titulo);
+
     const dadosAtualizacao = {
-      status: 'assinado',
+      respostas,
       nomeAssinante: nomeAssinante.trim(),
       cpfAssinante: cpfAssinante?.trim() || null,
       ipAssinante: ip,
-      assinadoEm: new Date(),
     };
 
-    // Se o termo tem perguntas (anamnese), gera o PDF final já com as respostas preenchidas
-    if (Array.isArray(respostas) && respostas.length > 0 && doc.termo) {
-      dadosAtualizacao.respostas = respostas;
-      try {
-        const { gerarPDF } = require('../controllers/termoController');
-        const { s3, S3_BUCKET, S3_REGION } = require('../config/s3');
-        const conteudoPreenchido = preencherRespostasNoConteudo(doc.termo.conteudo || '', respostas)
-          .replace(/\{\{PACIENTE_NOME\}\}/g, nomeAssinante.trim())
-          .replace(/\{\{PACIENTE_CPF\}\}/g, cpfAssinante?.trim() || '')
-          .replace(/\{\{DATA\}\}/g, new Date().toLocaleDateString('pt-BR'));
-        const pdfBuffer = await gerarPDF(conteudoPreenchido, doc.termo.titulo);
-        const key = `anamneses/${doc.id}/preenchida-${Date.now()}.pdf`;
-        await s3.upload({ Bucket: S3_BUCKET, Key: key, Body: pdfBuffer, ContentType: 'application/pdf' }).promise();
-        dadosAtualizacao.pdfPreenchidoUrl = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
-      } catch (pdfErr) {
-        console.error('[Assinar] Erro ao gerar PDF preenchido:', pdfErr.message);
-        // Não bloqueia a assinatura se a geração do PDF falhar — as respostas já ficam salvas
-      }
+    try {
+      const key = `anamneses/${doc.id}/preenchida-${Date.now()}.pdf`;
+      await s3.upload({ Bucket: S3_BUCKET, Key: key, Body: pdfBuffer, ContentType: 'application/pdf' }).promise();
+      dadosAtualizacao.pdfPreenchidoUrl = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
+    } catch (s3Err) {
+      console.error('[Assinar] Erro ao salvar PDF preenchido no S3:', s3Err.message);
+      // Não bloqueia o fluxo — o PDF preenchido é só uma cópia extra pra nós, a assinatura oficial é a da Autentique
+    }
+
+    let autentiqueLink = null;
+    try {
+      const docAutentique = await criarDocumentoAutentique(pdfBuffer, doc.termo.titulo, { nome: nomeAssinante.trim() });
+      dadosAtualizacao.autentiqueId = docAutentique.id;
+      autentiqueLink = docAutentique.signatures?.find(s => s.link?.short_link)?.link?.short_link || null;
+    } catch (autErr) {
+      console.error('[Assinar] Erro ao criar documento na Autentique:', autErr.message);
     }
 
     await doc.update(dadosAtualizacao);
 
-    res.json({ success: true, assinadoEm: doc.assinadoEm });
+    if (!autentiqueLink) {
+      return res.status(500).json({ error: 'Respostas salvas, mas não foi possível gerar o link de assinatura oficial. Tente novamente em instantes.' });
+    }
+
+    res.json({ success: true, autentiqueLink });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
