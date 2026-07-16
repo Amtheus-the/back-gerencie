@@ -169,28 +169,37 @@ const enviar = async (req, res) => {
     let link = null;
     let autentiqueId = null;
 
-    console.log('[Termo/enviar] AUTENTIQUE_TOKEN configurado:', !!AUTENTIQUE_TOKEN);
-    console.log('[Termo/enviar] AUTENTIQUE_SANDBOX:', AUTENTIQUE_SANDBOX);
+    // Anamnese tem perguntas pra o paciente preencher — o PDF só pode ser gerado
+    // DEPOIS das respostas, então não dá pra usar a Autentique aqui (ela exige o
+    // PDF pronto no momento do envio). Usamos nossa própria página de assinatura.
+    const isAnamnese = termo.tipo === 'anamnese';
 
-    if (!AUTENTIQUE_TOKEN) {
-      return res.status(500).json({ error: 'Integração de assinatura digital não configurada. Adicione AUTENTIQUE_TOKEN nas variáveis de ambiente.' });
-    }
+    if (isAnamnese) {
+      link = `${process.env.FRONTEND_URL}/assinar/${token}`;
+    } else {
+      console.log('[Termo/enviar] AUTENTIQUE_TOKEN configurado:', !!AUTENTIQUE_TOKEN);
+      console.log('[Termo/enviar] AUTENTIQUE_SANDBOX:', AUTENTIQUE_SANDBOX);
 
-    console.log('[Autentique] Gerando PDF do termo:', termo.titulo);
-    const pdfBuffer = await gerarPDF(conteudo, termo.titulo);
-    console.log('[Autentique] PDF gerado, tamanho:', pdfBuffer.length, 'bytes');
+      if (!AUTENTIQUE_TOKEN) {
+        return res.status(500).json({ error: 'Integração de assinatura digital não configurada. Adicione AUTENTIQUE_TOKEN nas variáveis de ambiente.' });
+      }
 
-    console.log('[Autentique] Criando documento para paciente:', paciente.nome);
-    const docAutentique = await criarDocumentoAutentique(pdfBuffer, termo.titulo, { nome: paciente.nome });
-    autentiqueId = docAutentique.id;
-    const sigPaciente = docAutentique.signatures?.find(s => s.link?.short_link);
-    link = sigPaciente?.link?.short_link;
-    console.log('[Autentique] Documento criado! ID:', autentiqueId);
-    console.log('[Autentique] Link de assinatura:', link);
-    console.log('[Autentique] Signatures:', JSON.stringify(docAutentique.signatures, null, 2));
+      console.log('[Autentique] Gerando PDF do termo:', termo.titulo);
+      const pdfBuffer = await gerarPDF(conteudo, termo.titulo);
+      console.log('[Autentique] PDF gerado, tamanho:', pdfBuffer.length, 'bytes');
 
-    if (!link) {
-      return res.status(500).json({ error: 'Autentique não retornou link de assinatura. Verifique o token e tente novamente.' });
+      console.log('[Autentique] Criando documento para paciente:', paciente.nome);
+      const docAutentique = await criarDocumentoAutentique(pdfBuffer, termo.titulo, { nome: paciente.nome });
+      autentiqueId = docAutentique.id;
+      const sigPaciente = docAutentique.signatures?.find(s => s.link?.short_link);
+      link = sigPaciente?.link?.short_link;
+      console.log('[Autentique] Documento criado! ID:', autentiqueId);
+      console.log('[Autentique] Link de assinatura:', link);
+      console.log('[Autentique] Signatures:', JSON.stringify(docAutentique.signatures, null, 2));
+
+      if (!link) {
+        return res.status(500).json({ error: 'Autentique não retornou link de assinatura. Verifique o token e tente novamente.' });
+      }
     }
 
     const doc = await DocumentoPaciente.create({
@@ -310,4 +319,4 @@ const sincronizarDocumento = async (req, res) => {
   }
 };
 
-module.exports = { listar, criar, atualizar, deletar, clonar, enviar, listarDocumentos, sincronizarDocumento };
+module.exports = { listar, criar, atualizar, deletar, clonar, enviar, listarDocumentos, sincronizarDocumento, gerarPDF };
