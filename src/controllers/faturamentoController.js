@@ -118,9 +118,10 @@ exports.criarFaturamento = async (req, res) => {
   try {
   const { notificarNovoFaturamento } = require('../services/emailService');
   const userId = req.user.id;
-  let { descricao, valor, data, formaPagamento, paciente_id, paciente, tipoPessoa, observacoes, cpf, declarar } = req.body;
+  let { descricao, valor, data, formaPagamento, paciente_id, paciente, tipoPessoa, observacoes, cpf, declarar,
+        maquinaCartaoId, parcelasCartao, cartaoAntecipado, taxaCartaoResponsavel } = req.body;
   console.log('🔎 [DEBUG] Corpo da requisição faturamento:', req.body);
-  const { Paciente } = require('../models');
+  const { Paciente, MaquinaCartao, TaxaMaquinaCartao, Despesa } = require('../models');
   // Se vier só nome, buscar o id
   if (!paciente_id && paciente) {
     const pacienteObj = await Paciente.findOne({ where: { nome: paciente } });
@@ -145,7 +146,25 @@ exports.criarFaturamento = async (req, res) => {
     const usuario = await User.findByPk(userId, {
       attributes: ['clinicaId']
     });
-    
+
+    // Taxa de máquina de cartão (só se veio máquina + parcelas selecionadas)
+    let taxaCartaoPercentual = null;
+    let taxaCartaoValor = null;
+    let maquinaCartaoNome = null;
+    if (formaPagamento === 'Cartão de Crédito' && maquinaCartaoId && parcelasCartao) {
+      const maquina = await MaquinaCartao.findOne({ where: { id: maquinaCartaoId, clinicaId: usuario.clinicaId } });
+      const taxaLinha = maquina && await TaxaMaquinaCartao.findOne({
+        where: { maquinaId: maquinaCartaoId, parcelas: parcelasCartao }
+      });
+      if (taxaLinha) {
+        maquinaCartaoNome = maquina.nome;
+        taxaCartaoPercentual = (cartaoAntecipado && taxaLinha.taxaAntecipacaoPercentual !== null)
+          ? taxaLinha.taxaAntecipacaoPercentual
+          : taxaLinha.taxaPercentual;
+        taxaCartaoValor = Math.round(parseFloat(valor) * (parseFloat(taxaCartaoPercentual) / 100) * 100) / 100;
+      }
+    }
+
     const novoFaturamento = await Faturamento.create({
       userId,
       clinicaId: usuario.clinicaId, // Adicionar clinicaId
@@ -159,7 +178,31 @@ exports.criarFaturamento = async (req, res) => {
       tipoPessoa,
       observacoes,
       declarar: declarar !== undefined ? Boolean(declarar) : true,
+      ...(taxaCartaoValor !== null && {
+        maquinaCartaoId,
+        parcelasCartao,
+        cartaoAntecipado: !!cartaoAntecipado,
+        taxaCartaoResponsavel: taxaCartaoResponsavel || null,
+        taxaCartaoPercentual,
+        taxaCartaoValor,
+      }),
     });
+
+    // Se a clínica absorve a taxa, lança automaticamente como despesa dedutível
+    if (taxaCartaoValor !== null && taxaCartaoResponsavel === 'clinica') {
+      const despesaTaxa = await Despesa.create({
+        userId,
+        clinicaId: usuario.clinicaId,
+        descricao: `Taxa de cartão (${maquinaCartaoNome} - ${parcelasCartao}x${cartaoAntecipado ? ' antecipado' : ''})`,
+        valor: taxaCartaoValor,
+        categoria: 'Outros',
+        data,
+        tipo: 'variavel',
+        dedutivel: true,
+        observacoes: `Gerada automaticamente a partir do faturamento "${descricao}"`,
+      });
+      await novoFaturamento.update({ despesaTaxaCartaoId: despesaTaxa.id });
+    }
 
     res.status(201).json({
       success: true,

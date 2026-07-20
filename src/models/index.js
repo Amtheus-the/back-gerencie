@@ -20,6 +20,8 @@ const CarneLeao = require('./CarneLeao');
 const Sugestao  = require('./Sugestao');
 const Termo = require('./Termo');
 const DocumentoPaciente = require('./DocumentoPaciente');
+const MaquinaCartao = require('./MaquinaCartao');
+const TaxaMaquinaCartao = require('./TaxaMaquinaCartao');
 
 // Relacionamentos do Orcamento
 Orcamento.belongsTo(Agendamento, { foreignKey: 'agendamento_id', as: 'agendamento' });
@@ -269,6 +271,13 @@ Sugestao.belongsTo(Clinica, { foreignKey: 'clinicaId', as: 'clinica' });
 User.hasMany   (Sugestao, { foreignKey: 'userId',    as: 'sugestoes' });
 Clinica.hasMany(Sugestao, { foreignKey: 'clinicaId', as: 'sugestoes' });
 
+// Máquinas de cartão e suas taxas por parcela
+Clinica.hasMany(MaquinaCartao, { foreignKey: 'clinicaId', as: 'maquinasCartao', onDelete: 'CASCADE' });
+MaquinaCartao.belongsTo(Clinica, { foreignKey: 'clinicaId', as: 'clinica' });
+MaquinaCartao.hasMany(TaxaMaquinaCartao, { foreignKey: 'maquinaId', as: 'taxas', onDelete: 'CASCADE' });
+TaxaMaquinaCartao.belongsTo(MaquinaCartao, { foreignKey: 'maquinaId', as: 'maquina' });
+Faturamento.belongsTo(MaquinaCartao, { foreignKey: 'maquinaCartaoId', as: 'maquinaCartao' });
+
 module.exports = {
   sequelize,
   Clinica,
@@ -287,4 +296,6 @@ module.exports = {
   Sugestao,
   Termo,
   DocumentoPaciente,
+  MaquinaCartao,
+  TaxaMaquinaCartao,
 };

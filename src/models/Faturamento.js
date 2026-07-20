@@ -170,6 +170,44 @@ const Faturamento = sequelize.define('Faturamento', {
     allowNull: true,
     field: 'comprovante_tamanho',
   },
+  // ─── Taxa de máquina de cartão ───
+  maquinaCartaoId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    field: 'maquina_cartao_id',
+  },
+  parcelasCartao: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'parcelas_cartao',
+  },
+  cartaoAntecipado: {
+    type: DataTypes.BOOLEAN,
+    allowNull: true,
+    field: 'cartao_antecipado',
+  },
+  taxaCartaoResponsavel: {
+    type: DataTypes.ENUM('clinica', 'paciente'),
+    allowNull: true,
+    field: 'taxa_cartao_responsavel',
+  },
+  taxaCartaoPercentual: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: true,
+    field: 'taxa_cartao_percentual',
+    comment: 'Percentual aplicado no momento do lançamento (snapshot)',
+  },
+  taxaCartaoValor: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    field: 'taxa_cartao_valor',
+  },
+  despesaTaxaCartaoId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    field: 'despesa_taxa_cartao_id',
+    comment: 'Despesa dedutível gerada automaticamente quando a clínica absorve a taxa',
+  },
 }, {
   tableName: 'faturamentos',
   underscored: true,

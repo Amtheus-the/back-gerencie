@@ -17,6 +17,7 @@ const { connectDB } = require('./config/database');
 const asaasRoutes = require('./routes/asaas');
 const authRoutes = require('./routes/authRoutes');
 const despesasRoutes = require('./routes/despesasRoutes');
+const maquinasCartaoRoutes = require('./routes/maquinasCartaoRoutes');
 const faturamentoRoutes = require('./routes/faturamentoRoutes');
 const analiseRoutes = require('./routes/analiseRoutes');
 const dashboardRoutes = require('./routes/dashboard');
@@ -126,6 +127,7 @@ app.get('/api/token/:email', async (req, res) => {
 // Rotas
 app.use('/api/auth', authRoutes);
 app.use('/api/despesas', despesasRoutes);
+app.use('/api/maquinas-cartao', maquinasCartaoRoutes);
 app.use('/api/faturamento', faturamentoRoutes);
 app.use('/api/analise', analiseRoutes);
 app.use('/api/dashboard', dashboardRoutes);
