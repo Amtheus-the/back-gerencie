@@ -170,18 +170,20 @@ exports.criarFaturamento = async (req, res) => {
   try {
   const { notificarNovoFaturamento } = require('../services/emailService');
   const userId = req.user.id;
-  let { descricao, valor, data, formaPagamento, paciente_id, paciente, tipoPessoa, observacoes, cpf, declarar,
+  let { descricao, valor, data, formaPagamento, pacienteId, paciente_id, paciente, tipoPessoa, observacoes, cpf, declarar,
         maquinaCartaoId, parcelasCartao, cartaoAntecipado, taxaCartaoResponsavel, orcamentoId } = req.body;
+  // Aceita tanto pacienteId (camelCase, atributo real do model) quanto paciente_id (compat com clientes antigos)
+  pacienteId = pacienteId || paciente_id || null;
   console.log('🔎 [DEBUG] Corpo da requisição faturamento:', req.body);
   const { Paciente, MaquinaCartao, TaxaMaquinaCartao, Despesa } = require('../models');
   // Se vier só nome, buscar o id
-  if (!paciente_id && paciente) {
+  if (!pacienteId && paciente) {
     const pacienteObj = await Paciente.findOne({ where: { nome: paciente } });
-    paciente_id = pacienteObj ? pacienteObj.id : null;
+    pacienteId = pacienteObj ? pacienteObj.id : null;
   }
   // Se vier só id, buscar o nome
-  if (paciente_id && !paciente) {
-    const pacienteObj = await Paciente.findByPk(paciente_id);
+  if (pacienteId && !paciente) {
+    const pacienteObj = await Paciente.findByPk(pacienteId);
     paciente = pacienteObj ? pacienteObj.nome : null;
   }
 
@@ -224,7 +226,7 @@ exports.criarFaturamento = async (req, res) => {
       valor,
       data,
       formaPagamento,
-      paciente_id,
+      pacienteId,
       paciente,
       cpf,
       tipoPessoa,
