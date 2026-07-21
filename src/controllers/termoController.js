@@ -40,7 +40,7 @@ async function gerarPDF(htmlContent, titulo) {
   });
 }
 
-async function criarDocumentoAutentique(pdfBuffer, titulo, signatario) {
+async function criarDocumentoAutentique(pdfBuffer, titulo, signatario, opcoes = {}) {
   const form = new FormData();
 
   const query = `
@@ -54,8 +54,8 @@ async function criarDocumentoAutentique(pdfBuffer, titulo, signatario) {
   `;
 
   const variables = {
-    document: { name: titulo },
-    signers: [{ name: signatario.nome, action: 'SIGN' }],
+    document: { name: titulo, ...(opcoes.qualified && { qualified: true }) },
+    signers: [{ name: signatario.nome, ...(signatario.email && { email: signatario.email }), action: 'SIGN' }],
     file: null,
   };
 

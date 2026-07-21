@@ -1,8 +1,19 @@
 const PDFDocument = require('pdfkit');
-const { Clinica } = require('../models');
+const axios = require('axios');
+const { Clinica, DocumentoClinico } = require('../models');
+const { criarDocumentoAutentique } = require('./termoController');
+
+const AUTENTIQUE_TOKEN = process.env.AUTENTIQUE_TOKEN;
+const AUTENTIQUE_URL = 'https://api.autentique.com.br/v2/graphql';
 
 const ORANGE = '#F97316';
 const DARK = '#1a1a2e';
+
+const TITULOS = {
+  receita: 'Receituário Odontológico',
+  atestado: 'Atestado Odontológico',
+  declaracao: 'Declaração de Horas',
+};
 
 function bufferFromDataUri(dataUri) {
   if (!dataUri || typeof dataUri !== 'string' || !dataUri.startsWith('data:')) return null;
@@ -170,5 +181,96 @@ exports.gerarPdfDocumento = async (req, res) => {
   } catch (error) {
     console.error('Erro ao gerar PDF do documento:', error);
     res.status(500).json({ message: 'Erro ao gerar PDF do documento', error: error.message });
+  }
+};
+
+// Envia o documento pra Autentique com o dentista como assinante qualificado (ICP-Brasil)
+exports.assinarDocumento = async (req, res) => {
+  try {
+    if (!AUTENTIQUE_TOKEN) {
+      return res.status(500).json({ message: 'Integração de assinatura digital não configurada. Adicione AUTENTIQUE_TOKEN nas variáveis de ambiente.' });
+    }
+
+    const { tipo, pacienteId, ...dados } = req.body;
+    if (!['receita', 'atestado', 'declaracao'].includes(tipo)) {
+      return res.status(400).json({ message: 'Tipo de documento inválido.' });
+    }
+
+    const clinica = req.user.clinicaId ? await Clinica.findByPk(req.user.clinicaId) : null;
+    const pdfBuffer = await montarPDF({ tipo, dados, user: req.user, clinica });
+
+    const titulo = `${TITULOS[tipo]} — ${dados.nome || 'Paciente'}`;
+    const docAutentique = await criarDocumentoAutentique(
+      pdfBuffer,
+      titulo,
+      { nome: req.user.nome, email: req.user.email },
+      { qualified: true }
+    );
+
+    const sigDentista = docAutentique.signatures?.find(s => s.link?.short_link);
+    const link = sigDentista?.link?.short_link;
+    if (!link) {
+      return res.status(500).json({ message: 'Autentique não retornou link de assinatura. Verifique o token e tente novamente.' });
+    }
+
+    const documento = await DocumentoClinico.create({
+      clinicaId: req.user.clinicaId,
+      userId: req.user.id,
+      pacienteId: pacienteId || null,
+      tipo,
+      titulo,
+      status: 'pendente',
+      autentiqueId: docAutentique.id,
+    });
+
+    res.json({ success: true, documentoId: documento.id, link });
+  } catch (error) {
+    console.error('Erro ao enviar documento pra assinatura digital:', error);
+    res.status(500).json({ message: 'Erro ao enviar documento pra assinatura digital', error: error.message });
+  }
+};
+
+// Sincroniza o status de assinatura junto à Autentique
+exports.sincronizarAssinatura = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const documento = await DocumentoClinico.findOne({ where: { id, clinicaId: req.user.clinicaId } });
+    if (!documento) return res.status(404).json({ message: 'Documento não encontrado' });
+    if (!documento.autentiqueId) return res.status(400).json({ message: 'Documento não vinculado à Autentique' });
+
+    const query = `
+      query ($id: UUID!) {
+        document(id: $id) {
+          id name
+          signatures { public_id name email signed { created_at } link { short_link } }
+          files { original signed }
+        }
+      }
+    `;
+
+    const resp = await axios.post(AUTENTIQUE_URL,
+      { query, variables: { id: documento.autentiqueId } },
+      { headers: { Authorization: `Bearer ${AUTENTIQUE_TOKEN}`, 'Content-Type': 'application/json' } }
+    );
+
+    if (resp.data.errors) throw new Error(resp.data.errors[0].message);
+
+    const docAut = resp.data.data.document;
+    if (!docAut) return res.status(404).json({ message: 'Documento não encontrado na Autentique.' });
+
+    const assinaturas = (docAut.signatures || []).filter(s => s.name !== null);
+    const assinado = assinaturas.length > 0 && assinaturas.every(s => s.signed?.created_at);
+
+    if (assinado && documento.status !== 'assinado') {
+      await documento.update({ status: 'assinado', assinadoEm: new Date() });
+    }
+
+    res.json({
+      status: assinado ? 'assinado' : 'pendente',
+      downloadUrl: docAut.files?.signed || docAut.files?.original || null,
+    });
+  } catch (error) {
+    console.error('Erro ao sincronizar assinatura:', error);
+    res.status(500).json({ message: 'Erro ao sincronizar assinatura', error: error.message });
   }
 };
