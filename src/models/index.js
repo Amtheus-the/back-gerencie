@@ -30,6 +30,10 @@ Agendamento.hasOne(Orcamento, { foreignKey: 'agendamento_id', as: 'orcamento' })
 Orcamento.belongsTo(Paciente, { foreignKey: 'paciente_id', as: 'paciente' });
 Paciente.hasMany(Orcamento, { foreignKey: 'paciente_id', as: 'orcamentos' });
 
+// Um orçamento pode ter vários faturamentos (entrada + pagamentos seguintes)
+Orcamento.hasMany(Faturamento, { foreignKey: 'orcamentoId', as: 'faturamentos' });
+Faturamento.belongsTo(Orcamento, { foreignKey: 'orcamentoId', as: 'orcamento' });
+
 // ========================================
 // RELACIONAMENTOS HIERÁRQUICOS
 // ========================================

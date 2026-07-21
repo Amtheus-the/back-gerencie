@@ -1,13 +1,15 @@
-// Resumo financeiro do paciente
+// Resumo financeiro do paciente — investido, saldo em aberto, histórico real e série mensal
 exports.resumoFinanceiroPaciente = async (req, res) => {
   try {
     const { pacienteId } = req.params;
     const clinicaId = req.user.clinicaId;
-    const { Paciente } = require('../models');
+    const { Paciente, Orcamento } = require('../models');
 
     // Busca o nome do paciente para filtrar faturamentos pelo nome (FK pode não estar preenchida)
     const paciente = await Paciente.findByPk(pacienteId, { attributes: ['nome'] });
-    if (!paciente) return res.json({ totalInvestido: 0, totalNFs: 0, totalPendentes: 0 });
+    if (!paciente) {
+      return res.json({ totalInvestido: 0, totalNFs: 0, totalPendentes: 0, saldoEmAberto: 0, historico: [], porMes: [] });
+    }
 
     const { Op } = require('sequelize');
     const faturamentos = await Faturamento.findAll({
@@ -18,14 +20,64 @@ exports.resumoFinanceiroPaciente = async (req, res) => {
           { pacienteId },
           { paciente: paciente.nome }
         ]
-      }
+      },
+      order: [['data', 'DESC']],
     });
 
     const totalInvestido = faturamentos.reduce((sum, f) => sum + parseFloat(f.valor), 0);
     const totalNFs = faturamentos.filter(f => f.notaEmitida || f.reciboNome).length;
     const totalPendentes = faturamentos.filter(f => !f.notaEmitida && !f.reciboNome).length;
 
-    res.json({ totalInvestido, totalNFs, totalPendentes });
+    // Saldo em aberto: soma os orçamentos fechados desse paciente e desconta os faturamentos já vinculados a cada um
+    const orcamentos = await Orcamento.findAll({ where: { paciente_id: pacienteId, clinica_id: clinicaId, status: 'fechado' } });
+    let saldoEmAberto = 0;
+    if (orcamentos.length > 0) {
+      const orcamentoIds = orcamentos.map(o => o.id);
+      const pagosPorOrcamento = await Faturamento.findAll({
+        where: { orcamentoId: { [Op.in]: orcamentoIds } },
+        attributes: ['orcamentoId', 'valor'],
+      });
+      const pagoMap = {};
+      pagosPorOrcamento.forEach(f => {
+        pagoMap[f.orcamentoId] = (pagoMap[f.orcamentoId] || 0) + parseFloat(f.valor);
+      });
+      saldoEmAberto = orcamentos.reduce((soma, o) => {
+        const valorTotal = Object.values(o.valores || {}).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+        const valorPago = pagoMap[o.id] || 0;
+        return soma + Math.max(0, valorTotal - valorPago);
+      }, 0);
+      saldoEmAberto = Math.round(saldoEmAberto * 100) / 100;
+    }
+
+    // Histórico real (valores efetivamente cobrados, não preço de tabela)
+    const historico = faturamentos.slice(0, 50).map(f => ({
+      id: f.id,
+      data: f.data,
+      descricao: f.descricao,
+      procedimento: f.procedimento,
+      valor: parseFloat(f.valor),
+      formaPagamento: f.formaPagamento,
+      notaEmitida: f.notaEmitida,
+    }));
+
+    // Série mensal (últimos 6 meses) para gráfico
+    const hoje = new Date();
+    const meses = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+      meses.push({ ano: d.getFullYear(), mes: d.getMonth() + 1, label: d.toLocaleDateString('pt-BR', { month: 'short' }) });
+    }
+    const porMes = meses.map(({ ano, mes, label }) => {
+      const total = faturamentos
+        .filter(f => {
+          const df = new Date(f.data + 'T00:00:00');
+          return df.getFullYear() === ano && df.getMonth() + 1 === mes;
+        })
+        .reduce((s, f) => s + parseFloat(f.valor), 0);
+      return { label, valor: Math.round(total * 100) / 100 };
+    });
+
+    res.json({ totalInvestido, totalNFs, totalPendentes, saldoEmAberto, historico, porMes });
   } catch (error) {
     res.status(500).json({ message: 'Erro ao buscar resumo financeiro', error: error.message });
   }
@@ -119,7 +171,7 @@ exports.criarFaturamento = async (req, res) => {
   const { notificarNovoFaturamento } = require('../services/emailService');
   const userId = req.user.id;
   let { descricao, valor, data, formaPagamento, paciente_id, paciente, tipoPessoa, observacoes, cpf, declarar,
-        maquinaCartaoId, parcelasCartao, cartaoAntecipado, taxaCartaoResponsavel } = req.body;
+        maquinaCartaoId, parcelasCartao, cartaoAntecipado, taxaCartaoResponsavel, orcamentoId } = req.body;
   console.log('🔎 [DEBUG] Corpo da requisição faturamento:', req.body);
   const { Paciente, MaquinaCartao, TaxaMaquinaCartao, Despesa } = require('../models');
   // Se vier só nome, buscar o id
@@ -178,6 +230,7 @@ exports.criarFaturamento = async (req, res) => {
       tipoPessoa,
       observacoes,
       declarar: declarar !== undefined ? Boolean(declarar) : true,
+      orcamentoId: orcamentoId || null,
       ...(taxaCartaoValor !== null && {
         maquinaCartaoId,
         parcelasCartao,

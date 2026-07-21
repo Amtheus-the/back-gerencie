@@ -208,6 +208,12 @@ const Faturamento = sequelize.define('Faturamento', {
     field: 'despesa_taxa_cartao_id',
     comment: 'Despesa dedutível gerada automaticamente quando a clínica absorve a taxa',
   },
+  orcamentoId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    field: 'orcamento_id',
+    comment: 'Orçamento ao qual este lançamento se refere (permite rastrear entradas/saldo em aberto)',
+  },
 }, {
   tableName: 'faturamentos',
   underscored: true,
