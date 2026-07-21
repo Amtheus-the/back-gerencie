@@ -9,7 +9,8 @@ const Orcamento = sequelize.define('Orcamento', {
   },
   agendamento_id: {
     type: DataTypes.UUID,
-    allowNull: false
+    allowNull: true,
+    comment: 'Pode ser nulo para orçamentos criados manualmente, sem vínculo a um agendamento específico'
   },
   paciente_id: {
     type: DataTypes.UUID,
