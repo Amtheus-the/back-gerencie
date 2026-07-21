@@ -200,12 +200,16 @@ exports.assinarDocumento = async (req, res) => {
     const pdfBuffer = await montarPDF({ tipo, dados, user: req.user, clinica });
 
     const titulo = `${TITULOS[tipo]} — ${dados.nome || 'Paciente'}`;
+    // Não passar "email" aqui: quando o assinante tem email, a Autentique entrega o link só
+    // por e-mail e não retorna o short_link na resposta — e a gente precisa do link na hora
+    // pra abrir numa aba pro dentista assinar.
     const docAutentique = await criarDocumentoAutentique(
       pdfBuffer,
       titulo,
-      { nome: req.user.nome, email: req.user.email },
+      { nome: req.user.nome },
       { qualified: true }
     );
+    console.log('[Assinatura] Documento criado na Autentique:', JSON.stringify(docAutentique, null, 2));
 
     const sigDentista = docAutentique.signatures?.find(s => s.link?.short_link);
     const link = sigDentista?.link?.short_link;
