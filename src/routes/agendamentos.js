@@ -2,8 +2,52 @@ const express = require('express');
 const router = express.Router();
 const { Agendamento, Procedimento, Paciente, User } = require('../models');
 const { verificarToken } = require('../middleware/authMiddleware');
+const googleCalendarService = require('../services/googleCalendarService');
 
 router.use(verificarToken);
+
+/**
+ * Sincroniza um agendamento com o Google Calendar do dentista dono dele (user_id),
+ * se ele tiver a conta conectada. Nunca lança erro — falha de sync não pode
+ * derrubar a resposta do CRUD principal do agendamento.
+ */
+async function sincronizarComGoogle(agendamento) {
+  try {
+    const usuario = await User.findByPk(agendamento.user_id);
+    if (!usuario || !usuario.googleRefreshToken) return;
+
+    const [paciente, procedimento] = await Promise.all([
+      Paciente.findByPk(agendamento.paciente_id),
+      Procedimento.findByPk(agendamento.procedimento_id),
+    ]);
+
+    const googleEventId = await googleCalendarService.sincronizarEvento(usuario, {
+      dataHora: agendamento.data_hora,
+      duracaoMinutos: agendamento.duracao_minutos,
+      pacienteNome: paciente?.nome || 'Paciente',
+      procedimentoNome: procedimento?.nome || '',
+      observacoes: agendamento.observacoes,
+    }, agendamento.google_event_id);
+
+    if (googleEventId && googleEventId !== agendamento.google_event_id) {
+      await agendamento.update({ google_event_id: googleEventId });
+    }
+  } catch (err) {
+    console.error('[Google Calendar] Falha ao sincronizar agendamento', agendamento.id, ':', err.message);
+  }
+}
+
+/** Exclui o evento correspondente no Google Calendar do dono do agendamento (best-effort). */
+async function excluirDoGoogle(userId, googleEventId) {
+  if (!googleEventId) return;
+  try {
+    const usuario = await User.findByPk(userId);
+    if (!usuario || !usuario.googleRefreshToken) return;
+    await googleCalendarService.excluirEvento(usuario, googleEventId);
+  } catch (err) {
+    console.error('[Google Calendar] Falha ao excluir evento:', err.message);
+  }
+}
 
 // Listar agendamentos da clínica
 router.get('/', async (req, res) => {
@@ -121,6 +165,9 @@ router.post('/', async (req, res) => {
     }
 
     res.status(201).json(novoAgendamento);
+
+    // Sincroniza com o Google Calendar do dentista (assíncrono, não bloqueia a resposta)
+    sincronizarComGoogle(novoAgendamento);
   } catch (err) {
     console.error('❌ [Agendamento] Erro ao inserir:', err);
     res.status(500).json({ error: err.message });
@@ -142,6 +189,9 @@ router.put('/:id', async (req, res) => {
     if (lancamento_feito !== undefined) agendamento.lancamento_feito = lancamento_feito;
     await agendamento.save();
     res.json(agendamento);
+
+    // Sincroniza com o Google Calendar do dentista (assíncrono, não bloqueia a resposta)
+    sincronizarComGoogle(agendamento);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -150,11 +200,16 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const id = req.params.id;
-    const deleted = await Agendamento.destroy({ where: { id } });
-    if (deleted) {
-      return res.status(200).json({ message: 'Agendamento apagado!' });
+    const agendamento = await Agendamento.findByPk(id);
+    if (!agendamento) {
+      return res.status(404).json({ message: 'Agendamento não encontrado!' });
     }
-    return res.status(404).json({ message: 'Agendamento não encontrado!' });
+    const { user_id: userId, google_event_id: googleEventId } = agendamento;
+    await agendamento.destroy();
+    res.status(200).json({ message: 'Agendamento apagado!' });
+
+    // Remove o evento correspondente no Google Calendar (assíncrono, não bloqueia a resposta)
+    excluirDoGoogle(userId, googleEventId);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

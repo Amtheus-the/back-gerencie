@@ -135,6 +135,25 @@ const User = sequelize.define('User', {
     allowNull: true,
     comment: 'Timestamp de expiração do token de recuperação'
   },
+  // ─── Integração Google Calendar ───
+  googleAccessToken: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'google_access_token',
+    comment: 'Access token OAuth do Google Calendar (curta duração)'
+  },
+  googleRefreshToken: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'google_refresh_token',
+    comment: 'Refresh token OAuth do Google Calendar — presença indica conta conectada'
+  },
+  googleTokenExpiry: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'google_token_expiry',
+    comment: 'Data/hora de expiração do access token do Google'
+  },
 }, {
   tableName: 'users',
   underscored: true, // Usa snake_case no banco de dados
@@ -175,6 +194,8 @@ User.prototype.verificarSenha = async function(senha) {
 User.prototype.toJSON = function() {
   const values = { ...this.get() };
   delete values.senha;
+  delete values.googleAccessToken;
+  delete values.googleRefreshToken;
   return values;
 };
 
