@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const { User } = require('../models');
+const { User, Agendamento } = require('../models');
 const { verificarToken } = require('../middleware/authMiddleware');
 const googleCalendarService = require('../services/googleCalendarService');
 
@@ -69,6 +69,37 @@ router.get('/status', verificarToken, async (req, res) => {
     res.json({ conectado: !!usuario?.googleRefreshToken });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/google/eventos-externos
+ * Compromissos que o dentista criou direto no Google Calendar (fora do Gerencie),
+ * pra secretaria saber que ele está ocupado — sem paciente/procedimento vinculado.
+ */
+router.get('/eventos-externos', verificarToken, async (req, res) => {
+  try {
+    const usuario = await User.findByPk(req.user.id);
+    if (!usuario?.googleRefreshToken) {
+      return res.status(400).json({ error: 'Google Calendar não conectado.' });
+    }
+
+    const agora = new Date();
+    const timeMin = new Date(agora.getTime() - 14 * 24 * 60 * 60 * 1000);  // 14 dias atrás
+    const timeMax = new Date(agora.getTime() + 90 * 24 * 60 * 60 * 1000);  // 90 dias à frente
+
+    const [eventosGoogle, agendamentosDoUsuario] = await Promise.all([
+      googleCalendarService.listarEventos(usuario, timeMin, timeMax),
+      Agendamento.findAll({ where: { user_id: req.user.id }, attributes: ['google_event_id'] }),
+    ]);
+
+    const idsDoGerencie = new Set(agendamentosDoUsuario.map(a => a.google_event_id).filter(Boolean));
+    const eventosExternos = eventosGoogle.filter(ev => !idsDoGerencie.has(ev.id));
+
+    res.json(eventosExternos);
+  } catch (err) {
+    console.error('[Google Calendar] Erro ao listar eventos externos:', err.message);
+    res.status(500).json({ error: 'Erro ao buscar eventos do Google Calendar.' });
   }
 });
 

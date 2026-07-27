@@ -91,6 +91,32 @@ const sincronizarEvento = async (usuario, dadosAgendamento, googleEventIdExisten
   return resposta.data.id;
 };
 
+/**
+ * Lista eventos do Google Calendar do dentista num intervalo de datas.
+ * Usado pra mostrar compromissos pessoais criados direto no Google (fora do Gerencie).
+ */
+const listarEventos = async (usuario, timeMin, timeMax) => {
+  const auth = getClienteAutenticado(usuario);
+  const calendar = google.calendar({ version: 'v3', auth });
+  const resposta = await calendar.events.list({
+    calendarId: 'primary',
+    timeMin: timeMin.toISOString(),
+    timeMax: timeMax.toISOString(),
+    singleEvents: true,
+    orderBy: 'startTime',
+    maxResults: 250,
+  });
+  return (resposta.data.items || [])
+    .filter((evento) => evento.status !== 'cancelled' && (evento.start?.dateTime || evento.start?.date))
+    .map((evento) => ({
+      id: evento.id,
+      titulo: evento.summary || 'Compromisso pessoal',
+      inicio: evento.start.dateTime || evento.start.date,
+      fim: evento.end?.dateTime || evento.end?.date,
+      diaTodo: !evento.start.dateTime,
+    }));
+};
+
 const excluirEvento = async (usuario, googleEventId) => {
   if (!googleEventId) return;
   const auth = getClienteAutenticado(usuario);
@@ -106,5 +132,6 @@ module.exports = {
   gerarUrlAutorizacao,
   trocarCodigoPorTokens,
   sincronizarEvento,
+  listarEventos,
   excluirEvento,
 };
