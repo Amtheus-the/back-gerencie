@@ -203,6 +203,13 @@ const Clinica = sequelize.define('Clinica', {
     allowNull: true,
     field: 'inscricao_municipal',
     comment: 'Inscrição Municipal da clínica'
+  },
+  // ─── Marketing ───
+  mensagemAniversario: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'mensagem_aniversario',
+    comment: 'Mensagem personalizada de aniversário para pacientes (use {{paciente}} para o nome). Se vazio, usa a mensagem padrão do sistema.'
   }
 }, {
   tableName: 'clinicas',
