@@ -132,6 +132,10 @@ app.use('/api/maquinas-cartao', maquinasCartaoRoutes);
 app.use('/api/faturamento', faturamentoRoutes);
 app.use('/api/analise', analiseRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+// Precisa vir antes do coringa '/api' abaixo: o callback do Google é acessado
+// diretamente pelo navegador (sem token), então não pode passar pelo
+// verificarToken que o lancamentosRoutes aplica a tudo que cai em /api/*.
+app.use('/api/google', googleCalendarRoutes);
 app.use('/api', lancamentosRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/chatbot', chatbotRoutes);
@@ -143,7 +147,6 @@ app.use('/api/procedimentos', procedimentoRoutes);
 app.use('/api/plano-contas', planoContasRoutes);
 app.use('/api/clinicas', clinicaRoutes);
 app.use('/api/agendamentos', agendamentosRoutes);
-app.use('/api/google', googleCalendarRoutes);
 app.use('/api/webhook-whatsapp', webhookWhatsappRoutes);
 app.use('/api/orcamentos', orcamentoRoutes);
 app.use('/api/robo', roboRoutes);
