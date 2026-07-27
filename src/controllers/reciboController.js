@@ -23,6 +23,7 @@ exports.listarPF = async (req, res) => {
       attributes: [
         'id', 'descricao', 'valor', 'data',
         'paciente', 'cpf', 'formaPagamento',
+        'pagadorNome', 'pagadorCpf', 'pagadorTipoPessoa',
         'reciboUrl', 'reciboNome', 'reciboTamanho'
       ],
       order: [['data', 'DESC']]
