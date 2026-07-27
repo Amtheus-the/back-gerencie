@@ -171,7 +171,8 @@ exports.criarFaturamento = async (req, res) => {
   const { notificarNovoFaturamento } = require('../services/emailService');
   const userId = req.user.id;
   let { descricao, valor, data, formaPagamento, pacienteId, paciente_id, paciente, tipoPessoa, observacoes, cpf, declarar,
-        maquinaCartaoId, parcelasCartao, cartaoAntecipado, taxaCartaoResponsavel, orcamentoId } = req.body;
+        maquinaCartaoId, parcelasCartao, cartaoAntecipado, taxaCartaoResponsavel, orcamentoId,
+        pagadorNome, pagadorCpf, pagadorTipoPessoa } = req.body;
   // Aceita tanto pacienteId (camelCase, atributo real do model) quanto paciente_id (compat com clientes antigos)
   pacienteId = pacienteId || paciente_id || null;
   console.log('🔎 [DEBUG] Corpo da requisição faturamento:', req.body);
@@ -231,6 +232,9 @@ exports.criarFaturamento = async (req, res) => {
       cpf,
       tipoPessoa,
       observacoes,
+      pagadorNome: pagadorNome || null,
+      pagadorCpf: pagadorCpf || null,
+      pagadorTipoPessoa: pagadorTipoPessoa || null,
       declarar: declarar !== undefined ? Boolean(declarar) : true,
       orcamentoId: orcamentoId || null,
       ...(taxaCartaoValor !== null && {
