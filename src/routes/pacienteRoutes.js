@@ -21,6 +21,10 @@ router.get('/:id/historico', pacienteController.historicoProcedimentos);
 router.get('/:id/odontograma', pacienteController.buscarOdontograma);
 router.patch('/:id/odontograma', pacienteController.salvarOdontograma);
 
+// Histórico de anotações/observações (uma por consulta)
+router.get('/:id/anotacoes', pacienteController.listarAnotacoes);
+router.post('/:id/anotacoes', pacienteController.criarAnotacao);
+
 // CRUD básico
 router.get('/', pacienteController.listar);
 router.get('/:id', pacienteController.buscarPorId);

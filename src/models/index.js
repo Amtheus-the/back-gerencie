@@ -23,6 +23,7 @@ const DocumentoPaciente = require('./DocumentoPaciente');
 const MaquinaCartao = require('./MaquinaCartao');
 const TaxaMaquinaCartao = require('./TaxaMaquinaCartao');
 const DocumentoClinico = require('./DocumentoClinico');
+const AnotacaoPaciente = require('./AnotacaoPaciente');
 
 // Relacionamentos do Orcamento
 Orcamento.belongsTo(Agendamento, { foreignKey: 'agendamento_id', as: 'agendamento' });
@@ -289,6 +290,12 @@ DocumentoClinico.belongsTo(User, { foreignKey: 'userId', as: 'dentista' });
 Paciente.hasMany(DocumentoClinico, { foreignKey: 'pacienteId', as: 'documentosClinicos' });
 DocumentoClinico.belongsTo(Paciente, { foreignKey: 'pacienteId', as: 'paciente' });
 
+// Histórico de anotações/observações do paciente (uma por consulta/registro, não sobrescreve)
+User.hasMany(AnotacaoPaciente, { foreignKey: 'userId', as: 'anotacoesPaciente' });
+AnotacaoPaciente.belongsTo(User, { foreignKey: 'userId', as: 'autor' });
+Paciente.hasMany(AnotacaoPaciente, { foreignKey: 'pacienteId', as: 'anotacoes' });
+AnotacaoPaciente.belongsTo(Paciente, { foreignKey: 'pacienteId', as: 'paciente' });
+
 module.exports = {
   sequelize,
   Clinica,
@@ -310,4 +317,5 @@ module.exports = {
   MaquinaCartao,
   TaxaMaquinaCartao,
   DocumentoClinico,
+  AnotacaoPaciente,
 };

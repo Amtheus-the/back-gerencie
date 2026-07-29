@@ -1,4 +1,4 @@
-const { Agendamento, Procedimento, Paciente } = require('../models');
+const { Agendamento, Procedimento, Paciente, AnotacaoPaciente, User } = require('../models');
 const { Op } = require('sequelize');
 
 // Todos da mesma clínica veem todos os pacientes da clínica
@@ -246,6 +246,51 @@ class PacienteController {
       res.json({ success: true, dados });
     } catch (error) {
       res.status(500).json({ error: 'Erro ao salvar odontograma', detail: error.message });
+    }
+  }
+
+  // Histórico de anotações/observações do paciente (uma por consulta, não sobrescreve)
+  async listarAnotacoes(req, res) {
+    try {
+      const { id } = req.params;
+      const clinicaId = req.user.clinicaId;
+      const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId } });
+      if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+
+      const anotacoes = await AnotacaoPaciente.findAll({
+        where: { pacienteId: id, clinicaId },
+        include: [{ model: User, as: 'autor', attributes: ['id', 'nome'] }],
+        order: [['createdAt', 'DESC']]
+      });
+      res.json(anotacoes);
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao buscar anotações', detail: error.message });
+    }
+  }
+
+  async criarAnotacao(req, res) {
+    try {
+      const { id } = req.params;
+      const { texto } = req.body;
+      const clinicaId = req.user.clinicaId;
+      if (!texto || !texto.trim()) {
+        return res.status(400).json({ error: 'Texto da anotação é obrigatório' });
+      }
+      const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId } });
+      if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+
+      const anotacao = await AnotacaoPaciente.create({
+        pacienteId: id,
+        clinicaId,
+        userId: req.user.id,
+        texto: texto.trim(),
+      });
+      const comAutor = await AnotacaoPaciente.findByPk(anotacao.id, {
+        include: [{ model: User, as: 'autor', attributes: ['id', 'nome'] }],
+      });
+      res.status(201).json(comAutor);
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao criar anotação', detail: error.message });
     }
   }
 }
