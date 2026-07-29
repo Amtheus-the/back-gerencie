@@ -1,4 +1,5 @@
-const { Agendamento, Procedimento, Paciente, AnotacaoPaciente, User } = require('../models');
+const { Agendamento, Procedimento, Paciente, AnotacaoPaciente, ArquivoPaciente, User } = require('../models');
+const { s3, S3_BUCKET, getPresignedUrl, extractS3Key } = require('../config/s3');
 const { Op } = require('sequelize');
 
 // Todos da mesma clínica veem todos os pacientes da clínica
@@ -291,6 +292,112 @@ class PacienteController {
       res.status(201).json(comAutor);
     } catch (error) {
       res.status(500).json({ error: 'Erro ao criar anotação', detail: error.message });
+    }
+  }
+
+  // Pastas e arquivos do paciente (fotos, raio-x, contratos, etc)
+  async listarArquivos(req, res) {
+    try {
+      const { id } = req.params;
+      const clinicaId = req.user.clinicaId;
+      const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId } });
+      if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+
+      const arquivos = await ArquivoPaciente.findAll({
+        where: { pacienteId: id, clinicaId },
+        include: [{ model: User, as: 'autor', attributes: ['id', 'nome'] }],
+        order: [['createdAt', 'ASC']],
+      });
+      res.json(arquivos);
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao buscar arquivos', detail: error.message });
+    }
+  }
+
+  async criarPasta(req, res) {
+    try {
+      const { id } = req.params;
+      const { pasta } = req.body;
+      const clinicaId = req.user.clinicaId;
+      if (!pasta || !pasta.trim()) {
+        return res.status(400).json({ error: 'Nome da pasta é obrigatório' });
+      }
+      const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId } });
+      if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+
+      const novaPasta = await ArquivoPaciente.create({
+        pacienteId: id,
+        clinicaId,
+        userId: req.user.id,
+        pasta: pasta.trim().slice(0, 150),
+      });
+      res.status(201).json(novaPasta);
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao criar pasta', detail: error.message });
+    }
+  }
+
+  async uploadArquivo(req, res) {
+    try {
+      const { id } = req.params;
+      const clinicaId = req.user.clinicaId;
+      if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+
+      const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId } });
+      if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+
+      const arquivo = await ArquivoPaciente.create({
+        pacienteId: id,
+        clinicaId,
+        userId: req.user.id,
+        pasta: (req.query.pasta || 'Geral').toString().slice(0, 150),
+        nomeArquivo: req.file.originalname,
+        url: req.file.location,
+        tamanho: req.file.size,
+        tipo: req.file.mimetype,
+      });
+      const comAutor = await ArquivoPaciente.findByPk(arquivo.id, {
+        include: [{ model: User, as: 'autor', attributes: ['id', 'nome'] }],
+      });
+      res.status(201).json(comAutor);
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao enviar arquivo', detail: error.message });
+    }
+  }
+
+  async deletarArquivo(req, res) {
+    try {
+      const { id, arquivoId } = req.params;
+      const clinicaId = req.user.clinicaId;
+      const arquivo = await ArquivoPaciente.findOne({ where: { id: arquivoId, pacienteId: id, clinicaId } });
+      if (!arquivo) return res.status(404).json({ error: 'Arquivo não encontrado' });
+
+      if (arquivo.url) {
+        const key = extractS3Key(arquivo.url);
+        if (key) {
+          try { await s3.deleteObject({ Bucket: S3_BUCKET, Key: key }).promise(); } catch {}
+        }
+      }
+      await arquivo.destroy();
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao excluir arquivo', detail: error.message });
+    }
+  }
+
+  async downloadArquivo(req, res) {
+    try {
+      const { id, arquivoId } = req.params;
+      const clinicaId = req.user.clinicaId;
+      const arquivo = await ArquivoPaciente.findOne({ where: { id: arquivoId, pacienteId: id, clinicaId } });
+      if (!arquivo || !arquivo.url) return res.status(404).json({ error: 'Arquivo não encontrado' });
+
+      const key = extractS3Key(arquivo.url);
+      if (!key) return res.status(404).json({ error: 'Arquivo não encontrado' });
+      const urlAssinada = getPresignedUrl(key);
+      res.json({ url: urlAssinada });
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao baixar arquivo', detail: error.message });
     }
   }
 }
