@@ -53,14 +53,26 @@ const getClienteAutenticado = (usuario) => {
   return oauthClient;
 };
 
+const TIMEZONE_CLINICA = 'America/Sao_Paulo';
+
+// O Gerencie trata data_hora como "horário de parede" — os dígitos UTC do
+// valor armazenado JÁ são o horário de Brasília pretendido (o front usa
+// timeZone="UTC" no calendário pra exibir sem nenhuma conversão). Por isso,
+// pro Google entender a hora certa, mandamos esses mesmos dígitos com
+// timeZone explícito, em vez de toISOString() (que rotularia como UTC de verdade).
+const paraHorarioDeParede = (data) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${data.getUTCFullYear()}-${pad(data.getUTCMonth() + 1)}-${pad(data.getUTCDate())}T${pad(data.getUTCHours())}:${pad(data.getUTCMinutes())}:${pad(data.getUTCSeconds())}`;
+};
+
 const montarEvento = ({ dataHora, duracaoMinutos, pacienteNome, procedimentoNome, observacoes }) => {
   const inicio = new Date(dataHora);
   const fim = new Date(inicio.getTime() + (duracaoMinutos || 30) * 60000);
   return {
     summary: procedimentoNome ? `${pacienteNome} — ${procedimentoNome}` : pacienteNome,
     description: observacoes || undefined,
-    start: { dateTime: inicio.toISOString() },
-    end: { dateTime: fim.toISOString() },
+    start: { dateTime: paraHorarioDeParede(inicio), timeZone: TIMEZONE_CLINICA },
+    end: { dateTime: paraHorarioDeParede(fim), timeZone: TIMEZONE_CLINICA },
   };
 };
 
@@ -91,6 +103,19 @@ const sincronizarEvento = async (usuario, dadosAgendamento, googleEventIdExisten
   return resposta.data.id;
 };
 
+// Caminho inverso do paraHorarioDeParede: pega um dateTime real do Google
+// (com fuso correto) e devolve os mesmos dígitos "rotulados" como UTC, pra
+// bater com a convenção do calendário do Gerencie (timeZone="UTC" no front).
+const paraConvencaoGerencie = (dataISOComFuso) => {
+  const data = new Date(dataISOComFuso);
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE_CLINICA,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(data).reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+  return `${partes.year}-${partes.month}-${partes.day}T${partes.hour}:${partes.minute}:${partes.second}.000Z`;
+};
+
 /**
  * Lista eventos do Google Calendar do dentista num intervalo de datas.
  * Usado pra mostrar compromissos pessoais criados direto no Google (fora do Gerencie).
@@ -111,8 +136,8 @@ const listarEventos = async (usuario, timeMin, timeMax) => {
     .map((evento) => ({
       id: evento.id,
       titulo: evento.summary || 'Compromisso pessoal',
-      inicio: evento.start.dateTime || evento.start.date,
-      fim: evento.end?.dateTime || evento.end?.date,
+      inicio: evento.start.dateTime ? paraConvencaoGerencie(evento.start.dateTime) : evento.start.date,
+      fim: evento.end?.dateTime ? paraConvencaoGerencie(evento.end.dateTime) : evento.end?.date,
       diaTodo: !evento.start.dateTime,
     }));
 };
