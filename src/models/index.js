@@ -25,6 +25,7 @@ const TaxaMaquinaCartao = require('./TaxaMaquinaCartao');
 const DocumentoClinico = require('./DocumentoClinico');
 const AnotacaoPaciente = require('./AnotacaoPaciente');
 const ArquivoPaciente = require('./ArquivoPaciente');
+const BloqueioAgenda = require('./BloqueioAgenda');
 
 // Relacionamentos do Orcamento
 Orcamento.belongsTo(Agendamento, { foreignKey: 'agendamento_id', as: 'agendamento' });
@@ -303,6 +304,10 @@ ArquivoPaciente.belongsTo(User, { foreignKey: 'userId', as: 'autor' });
 Paciente.hasMany(ArquivoPaciente, { foreignKey: 'pacienteId', as: 'arquivos' });
 ArquivoPaciente.belongsTo(Paciente, { foreignKey: 'pacienteId', as: 'paciente' });
 
+// Bloqueios de agenda (dia todo ou horário específico travado)
+User.hasMany(BloqueioAgenda, { foreignKey: 'userId', as: 'bloqueiosAgenda' });
+BloqueioAgenda.belongsTo(User, { foreignKey: 'userId', as: 'dentista' });
+
 module.exports = {
   sequelize,
   Clinica,
@@ -326,4 +331,5 @@ module.exports = {
   DocumentoClinico,
   AnotacaoPaciente,
   ArquivoPaciente,
+  BloqueioAgenda,
 };

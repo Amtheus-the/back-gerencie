@@ -32,6 +32,7 @@ const planoContasRoutes = require('./routes/planoContasRoutes');
 const clinicaRoutes = require('./routes/clinicaRoutes');
 const agendamentosRoutes = require('./routes/agendamentos');
 const googleCalendarRoutes = require('./routes/googleCalendarRoutes');
+const bloqueiosAgendaRoutes = require('./routes/bloqueiosAgenda');
 const pacientesApiRoutes = require('./routes/pacientes');
 const procedimentosApiRoutes = require('./routes/procedimentos');
 const usuarioRoutes = require('./routes/usuarioRoutes');
@@ -136,6 +137,7 @@ app.use('/api/dashboard', dashboardRoutes);
 // diretamente pelo navegador (sem token), então não pode passar pelo
 // verificarToken que o lancamentosRoutes aplica a tudo que cai em /api/*.
 app.use('/api/google', googleCalendarRoutes);
+app.use('/api/bloqueios', bloqueiosAgendaRoutes);
 app.use('/api', lancamentosRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/chatbot', chatbotRoutes);

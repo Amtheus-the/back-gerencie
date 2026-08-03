@@ -1,10 +1,25 @@
 const express = require('express');
 const router = express.Router();
-const { Agendamento, Procedimento, Paciente, User } = require('../models');
+const { Agendamento, Procedimento, Paciente, User, BloqueioAgenda } = require('../models');
+const { Op } = require('sequelize');
 const { verificarToken } = require('../middleware/authMiddleware');
 const googleCalendarService = require('../services/googleCalendarService');
 
 router.use(verificarToken);
+
+/** Retorna o bloqueio de agenda que conflita com o horário informado, se houver. */
+async function encontrarBloqueioConflitante(userId, dataHoraInicio, duracaoMinutos) {
+  if (!userId || !dataHoraInicio) return null;
+  const inicio = new Date(dataHoraInicio);
+  const fim = new Date(inicio.getTime() + (duracaoMinutos || 30) * 60000);
+  return BloqueioAgenda.findOne({
+    where: {
+      userId,
+      dataInicio: { [Op.lt]: fim },
+      dataFim: { [Op.gt]: inicio },
+    },
+  });
+}
 
 /**
  * Sincroniza um agendamento com o Google Calendar do dentista dono dele (user_id),
@@ -95,6 +110,13 @@ router.post('/', async (req, res) => {
   } = req.body;
   console.log('🔔 [Agendamento] Dados recebidos:', req.body);
   try {
+    const conflito = await encontrarBloqueioConflitante(user_id, data_hora, duracao_minutos);
+    if (conflito) {
+      return res.status(409).json({
+        error: `Esse horário está bloqueado na agenda${conflito.motivo ? ` (${conflito.motivo})` : ''}. Escolha outro horário.`
+      });
+    }
+
     const novoAgendamento = await Agendamento.create({
       clinica_id,
       user_id,
@@ -182,6 +204,21 @@ router.put('/:id', async (req, res) => {
     const { data_hora, status, duracao_minutos, observacoes, lancamento_feito, paciente_id, procedimento_id, user_id } = req.body;
     const agendamento = await Agendamento.findOne({ where: { id, clinica_id: req.user.clinicaId } });
     if (!agendamento) return res.status(404).json({ message: 'Agendamento não encontrado' });
+
+    // Só valida bloqueio se horário, duração ou dentista estão de fato mudando
+    // (evita travar uma simples atualização de status, ex: marcar "compareceu")
+    if (data_hora !== undefined || duracao_minutos !== undefined || user_id !== undefined) {
+      const userIdFinal = user_id !== undefined ? user_id : agendamento.user_id;
+      const dataHoraFinal = data_hora !== undefined ? data_hora : agendamento.data_hora;
+      const duracaoFinal = duracao_minutos !== undefined ? duracao_minutos : agendamento.duracao_minutos;
+      const conflito = await encontrarBloqueioConflitante(userIdFinal, dataHoraFinal, duracaoFinal);
+      if (conflito) {
+        return res.status(409).json({
+          message: `Esse horário está bloqueado na agenda${conflito.motivo ? ` (${conflito.motivo})` : ''}. Escolha outro horário.`
+        });
+      }
+    }
+
     if (data_hora !== undefined) agendamento.data_hora = data_hora;
     if (status !== undefined) agendamento.status = status;
     if (duracao_minutos !== undefined) agendamento.duracao_minutos = duracao_minutos;
