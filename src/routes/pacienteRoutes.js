@@ -61,6 +61,7 @@ router.post('/:id/pastas', pacienteController.criarPasta);
 router.post('/:id/arquivos', uploadArquivoPaciente.single('arquivo'), pacienteController.uploadArquivo);
 router.get('/:id/arquivos/:arquivoId/download', pacienteController.downloadArquivo);
 router.delete('/:id/arquivos/:arquivoId', pacienteController.deletarArquivo);
+router.delete('/:id/pastas/:pasta', pacienteController.deletarPasta);
 
 // CRUD básico
 router.get('/', pacienteController.listar);

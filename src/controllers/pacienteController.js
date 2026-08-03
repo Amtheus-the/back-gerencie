@@ -385,6 +385,31 @@ class PacienteController {
     }
   }
 
+  // Exclui a pasta inteira (todos os arquivos dentro + a própria pasta)
+  async deletarPasta(req, res) {
+    try {
+      const { id, pasta } = req.params;
+      const clinicaId = req.user.clinicaId;
+      const nomePasta = decodeURIComponent(pasta);
+
+      const itens = await ArquivoPaciente.findAll({ where: { pacienteId: id, clinicaId, pasta: nomePasta } });
+      if (itens.length === 0) return res.status(404).json({ error: 'Pasta não encontrada' });
+
+      for (const item of itens) {
+        if (item.url) {
+          const key = extractS3Key(item.url);
+          if (key) {
+            try { await s3.deleteObject({ Bucket: S3_BUCKET, Key: key }).promise(); } catch {}
+          }
+        }
+      }
+      await ArquivoPaciente.destroy({ where: { pacienteId: id, clinicaId, pasta: nomePasta } });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao excluir pasta', detail: error.message });
+    }
+  }
+
   async downloadArquivo(req, res) {
     try {
       const { id, arquivoId } = req.params;
