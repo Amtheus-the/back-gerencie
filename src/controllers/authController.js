@@ -133,6 +133,7 @@ const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
 const { User, Clinica } = require('../models');
 const { sendValidationToken } = require('../services/emailService');
+const { atualizarStatusInadimplencia } = require('../services/asaasStatusService');
 
 /**
  * Registra um novo usuário
@@ -365,9 +366,11 @@ exports.login = async (req, res) => {
     let clinicaData = { tipoPessoa: 'PF' };
     if (user.clinicaId) {
       const clinicaDoUser = await Clinica.findByPk(user.clinicaId, {
-        attributes: ['tipoPessoa', 'plano', 'asaasCustomerId', 'asaasSubscriptionId', 'metodoPagamento', 'dataVencimento']
+        attributes: ['id', 'tipoPessoa', 'plano', 'asaasCustomerId', 'asaasSubscriptionId', 'metodoPagamento', 'dataVencimento', 'inadimplente']
       });
       if (clinicaDoUser) {
+        // Revalida no Asaas a cada login, pra não depender só do valor em cache
+        await atualizarStatusInadimplencia(clinicaDoUser);
         clinicaData = clinicaDoUser.toJSON();
       }
     }

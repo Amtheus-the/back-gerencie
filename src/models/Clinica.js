@@ -160,6 +160,18 @@ const Clinica = sequelize.define('Clinica', {
     field: 'data_vencimento',
     comment: 'Data de vencimento da assinatura'
   },
+  inadimplente: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Tem cobrança vencida no Asaas — bloqueia acesso ao sistema (exceto tela de pagamento)'
+  },
+  inadimplenteDesde: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'inadimplente_desde',
+    comment: 'Quando a inadimplência foi detectada'
+  },
   limiteUsuarios: {
     type: DataTypes.INTEGER,
     allowNull: false,

@@ -136,8 +136,12 @@ app.use('/api/dashboard', dashboardRoutes);
 // Precisa vir antes do coringa '/api' abaixo: o callback do Google é acessado
 // diretamente pelo navegador (sem token), então não pode passar pelo
 // verificarToken que o lancamentosRoutes aplica a tudo que cai em /api/*.
+// /api/asaas também precisa vir antes: clínica inadimplente tem que
+// conseguir acessar a tela de pagamento mesmo bloqueada — se cair no
+// coringa primeiro, o req.baseUrl vira '/api' e a whitelist não bate.
 app.use('/api/google', googleCalendarRoutes);
 app.use('/api/bloqueios', bloqueiosAgendaRoutes);
+app.use('/api/asaas', asaasRoutes);
 app.use('/api', lancamentosRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/chatbot', chatbotRoutes);
@@ -155,7 +159,6 @@ app.use('/api/robo', roboRoutes);
 app.use('/api/clinica', clinicaDashboardRoutes);
 app.use('/api/anamneses', anamneseRoutes);
 app.use('/api/usuarios', usuarioRoutes);
-app.use('/api/asaas', asaasRoutes);
 const sugestaoRoutes = require('./routes/sugestaoRoutes');
 app.use('/api/sugestoes', sugestaoRoutes);
 const secretariaRoutes = require('./routes/secretariaRoutes');

@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const router = express.Router();
 const { Clinica } = require('../models');
+const { atualizarStatusInadimplencia } = require('../services/asaasStatusService');
 
 const _rawKey = process.env.ASAAS_API_KEY || '';
 const ASAAS_API_KEY = _rawKey.startsWith('$') ? _rawKey : '$' + _rawKey;
@@ -49,6 +50,12 @@ router.get('/cobrancas', async (req, res) => {
       { headers: asaasHeaders }
     );
     res.json(response.data);
+
+    // Aproveita essa consulta pra manter clinica.inadimplente atualizado (best-effort)
+    if (customer) {
+      const clinica = await Clinica.findOne({ where: { asaasCustomerId: customer } });
+      if (clinica) atualizarStatusInadimplencia(clinica).catch(() => {});
+    }
   } catch (err) {
     console.error('[ASAAS /cobrancas] Erro:', err.response?.status, JSON.stringify(err.response?.data), err.message);
     console.error('[ASAAS /cobrancas] API_URL:', ASAAS_API_URL, '| KEY presente:', !!ASAAS_API_KEY, '| KEY inicio:', ASAAS_API_KEY?.slice(0,10));

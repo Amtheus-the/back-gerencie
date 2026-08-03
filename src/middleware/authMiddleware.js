@@ -41,7 +41,7 @@ const authMiddleware = async (req, res, next) => {
     // Busca usuário completo do banco de dados (inclui clínica para tipoPessoa)
     console.log('[AUTH] Buscando user:', decoded.userId);
     const user = await User.findByPk(decoded.userId, {
-      include: [{ model: Clinica, as: 'clinica', attributes: ['tipoPessoa'] }]
+      include: [{ model: Clinica, as: 'clinica', attributes: ['tipoPessoa', 'inadimplente'] }]
     });
     console.log('[AUTH] User encontrado:', !!user);
 
@@ -66,9 +66,22 @@ const authMiddleware = async (req, res, next) => {
       permissoes: user.permissoes || null,
       criadoPorId: user.criadoPorId || null,
     };
-    
+
     // Adiciona userId para compatibilidade
     req.userId = user.id;
+
+    // Clínica inadimplente (cobrança vencida no Asaas) só pode acessar as rotas
+    // de pagamento/autenticação — o resto da API fica bloqueado até regularizar.
+    const ROTAS_LIBERADAS_INADIMPLENTE = ['/api/asaas', '/api/auth'];
+    const rotaLiberada = ROTAS_LIBERADAS_INADIMPLENTE.some(prefixo => req.baseUrl.startsWith(prefixo));
+    if (user.clinica?.inadimplente && !user.isAdmin && !rotaLiberada) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(403).json({
+        success: false,
+        error: 'INADIMPLENTE',
+        message: 'Assinatura com cobrança vencida. Regularize o pagamento para continuar usando o sistema.'
+      });
+    }
 
     next();
   } catch (error) {
