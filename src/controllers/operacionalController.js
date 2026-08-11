@@ -621,45 +621,50 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
       return res.status(422).json({ success: false, message: `CPF do tomador inválido ou não cadastrado (encontrado: "${cpfTomador}"). Verifique o CPF no lançamento ou no cadastro do paciente.` });
     }
 
+    if (!clinica.focusNfeToken) {
+      return res.status(422).json({ success: false, message: 'Esta clínica ainda não foi cadastrada como empresa emissora na Focus NFe. Rode scripts/cadastrar_empresa_focus.js antes de emitir.' });
+    }
+    if (!clinica.itemListaServico || !clinica.codigoMunicipioIbge) {
+      return res.status(422).json({
+        success: false,
+        message: `Complete os dados fiscais da clínica antes de emitir. Faltando: ${[!clinica.itemListaServico && 'Item da Lista de Serviço (LC 116)', !clinica.codigoMunicipioIbge && 'Código IBGE do Município'].filter(Boolean).join(', ')}.`,
+      });
+    }
+
     const nfsePayload = {
-      provedor: 'padrao',
-      ambiente: 'producao',
-      infDPS: {
-        dhEmi: new Date(faturamento.data || Date.now()).toISOString(),
-        prest: { CNPJ: cnpjClinica },
-        toma: {
-          ...(isPJ ? { CNPJ: cnpjTomador } : { CPF: cpfTomador }),
-          xNome: nomeTomador,
-          ...(paciente?.email || faturamento.email ? { email: paciente?.email || faturamento.email } : {}),
-        },
-        serv: {
-          cServ: {
-            cTribNac: clinica.codigoServico || '04693',
-            xDescServ: clinica.descricaoPadraoNota || faturamento.descricao,
-          },
-        },
-        valores: {
-          vServPrest: { vServ: parseFloat(faturamento.valor) },
-          trib: { tribMun: { tribISSQN: 1 } },
-        },
+      data_emissao: new Date(faturamento.data || Date.now()).toISOString(),
+      natureza_operacao: '1',
+      optante_simples_nacional: ['1', '2'].includes(String(clinica.regimeTributario)),
+      prestador: {
+        cnpj: cnpjClinica,
+        inscricao_municipal: clinica.inscricao_municipal || clinica.inscricaoMunicipal,
+        codigo_municipio: clinica.codigoMunicipioIbge,
+      },
+      tomador: {
+        ...(isPJ ? { cnpj: cnpjTomador } : { cpf: cpfTomador }),
+        razao_social: nomeTomador,
+        ...(paciente?.email || faturamento.email ? { email: paciente?.email || faturamento.email } : {}),
+      },
+      servico: {
+        valor_servicos: parseFloat(faturamento.valor),
+        iss_retido: false,
+        item_lista_servico: clinica.itemListaServico,
+        discriminacao: clinica.descricaoPadraoNota || faturamento.descricao,
+        codigo_municipio: clinica.codigoMunicipioIbge,
       },
     };
 
-    const { getNuvemFiscalToken } = require('../services/nuvemFiscalService');
-    const token = await getNuvemFiscalToken();
+    const { emitirNfse } = require('../services/focusNfeService');
+    const ref = faturamento.id;
+    const resultado = await emitirNfse(clinica.focusNfeToken, ref, nfsePayload);
 
-    const response = await axios.post('https://api.nuvemfiscal.com.br/nfse/dps', nfsePayload, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+    await faturamento.update({ notaEmitida: true, numeroNota: ref });
+
+    return res.json({
+      success: true,
+      message: 'Nota Fiscal enviada para emissão! O processamento é assíncrono — confira o status em alguns segundos.',
+      data: resultado,
     });
-
-    const nfseId = response.data?.id || response.data?.data?.id || null;
-    await faturamento.update({ notaEmitida: true, numeroNota: nfseId || response.data?.numero });
-
-    return res.json({ success: true, message: 'Nota Fiscal enviada para emissão!', data: response.data });
 
   } catch (error) {
     console.error('Erro ao emitir NF (admin):', error.response?.status, error.response?.data || error.message);
@@ -672,7 +677,7 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
 };
 
 /**
- * Cancelar nota fiscal junto à prefeitura via Nuvem Fiscal (admin)
+ * Cancelar nota fiscal junto à prefeitura via Focus NFe (admin)
  * DELETE /api/operacional/faturamentos/:id/nota
  */
 exports.cancelarNotaFiscalAdmin = async (req, res) => {
@@ -694,20 +699,14 @@ exports.cancelarNotaFiscalAdmin = async (req, res) => {
       return res.status(422).json({ success: false, message: 'ID da nota fiscal não encontrado. Não é possível cancelar.' });
     }
 
-    const { getNuvemFiscalToken } = require('../services/nuvemFiscalService');
-    const token = await getNuvemFiscalToken();
+    const usuarioDono = await User.findByPk(faturamento.userId || faturamento.user_id);
+    const clinicaDona = await Clinica.findByPk(usuarioDono.clinicaId || usuarioDono.clinica_id);
+    if (!clinicaDona?.focusNfeToken) {
+      return res.status(422).json({ success: false, message: 'Clínica não cadastrada na Focus NFe.' });
+    }
 
-    await axios.post(
-      `https://api.nuvemfiscal.com.br/nfse/${nfseId}/cancelamento`,
-      { motivo: motivo || 'Cancelamento solicitado pelo administrador.' },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-      }
-    );
+    const { cancelarNfse } = require('../services/focusNfeService');
+    await cancelarNfse(clinicaDona.focusNfeToken, nfseId, motivo || 'Cancelamento solicitado pelo administrador.');
 
     await faturamento.update({ notaEmitida: false, numeroNota: null });
 
@@ -783,7 +782,7 @@ exports.registrarNotaManual = async (req, res) => {
 /**
  * Baixar/visualizar o PDF da nota fiscal de um faturamento (admin)
  * Funciona tanto para NF anexada manualmente (arquivo no S3) quanto para
- * NF emitida via API (busca o PDF direto na Nuvem Fiscal)
+ * NF emitida via API (busca o PDF direto na Focus NFe)
  * GET /api/operacional/faturamentos/:id/nota-manual
  */
 exports.visualizarNotaManual = async (req, res) => {
@@ -811,13 +810,19 @@ exports.visualizarNotaManual = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Nota fiscal não encontrada' });
     }
 
-    const { getNuvemFiscalToken } = require('../services/nuvemFiscalService');
-    const token = await getNuvemFiscalToken();
+    const usuarioDono = await User.findByPk(faturamento.userId || faturamento.user_id);
+    const clinicaDona = await Clinica.findByPk(usuarioDono.clinicaId || usuarioDono.clinica_id);
+    if (!clinicaDona?.focusNfeToken) {
+      return res.status(422).json({ success: false, message: 'Clínica não cadastrada na Focus NFe.' });
+    }
 
-    const response = await axios.get(
-      `https://api.nuvemfiscal.com.br/nfse/${faturamento.numeroNota}/pdf`,
-      { headers: { Authorization: `Bearer ${token}` }, responseType: 'arraybuffer' }
-    );
+    const { consultarNfse } = require('../services/focusNfeService');
+    const consulta = await consultarNfse(clinicaDona.focusNfeToken, faturamento.numeroNota);
+    if (!consulta.url_danfse) {
+      return res.status(400).json({ success: false, message: `Nota ainda sem PDF disponível (status: ${consulta.status}).` });
+    }
+
+    const response = await axios.get(consulta.url_danfse, { responseType: 'arraybuffer' });
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="nota-${faturamento.numeroNota}.pdf"`);

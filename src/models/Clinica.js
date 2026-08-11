@@ -216,6 +216,30 @@ const Clinica = sequelize.define('Clinica', {
     field: 'inscricao_municipal',
     comment: 'Inscrição Municipal da clínica'
   },
+  itemListaServico: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+    field: 'item_lista_servico',
+    comment: 'Código do serviço na lista LC 116/2003 (ex: 0401) — usado pela Focus NFe, diferente do cTribNac usado em codigoServico'
+  },
+  codigoMunicipioIbge: {
+    type: DataTypes.STRING(7),
+    allowNull: true,
+    field: 'codigo_municipio_ibge',
+    comment: 'Código IBGE (7 dígitos) da cidade da clínica — exigido pela Focus NFe pra emitir NFS-e'
+  },
+  regimeTributario: {
+    type: DataTypes.STRING(2),
+    allowNull: true,
+    field: 'regime_tributario',
+    comment: '1=Simples Nacional, 2=Simples c/ excesso, 3=Normal, 4=MEI — exigido pra cadastrar a empresa na Focus NFe'
+  },
+  focusNfeToken: {
+    type: DataTypes.STRING(64),
+    allowNull: true,
+    field: 'focus_nfe_token',
+    comment: 'Token de produção da empresa na Focus NFe (devolvido no cadastro da empresa) — usado pra emitir/consultar/cancelar NFS-e dessa clínica'
+  },
   // ─── Marketing ───
   mensagemAniversario: {
     type: DataTypes.TEXT,
