@@ -96,13 +96,19 @@ const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Fica consultando a nota até ela sair de "processando_autorizacao" ou
- * estourar as tentativas. A emissão em si é assíncrona (a prefeitura
+ * estourar o orçamento de tempo. A emissão em si é assíncrona (a prefeitura
  * processa depois) — sem isso, o sistema marcaria a nota como "emitida"
  * mesmo quando a prefeitura ainda vai rejeitar.
+ *
+ * Usa um orçamento de tempo (não um nº fixo de tentativas) porque o
+ * frontend tem timeout de 10s na requisição — precisa garantir que o
+ * backend sempre responde antes disso, não importa quanto cada consulta
+ * individual demorou.
  */
-async function aguardarAutorizacaoNfse(clinicaToken, ref, { tentativas = 8, intervaloMs = 1500 } = {}) {
+async function aguardarAutorizacaoNfse(clinicaToken, ref, { orcamentoMs = 6000, intervaloMs = 1000 } = {}) {
+  const inicio = Date.now();
   let ultimaConsulta = null;
-  for (let i = 0; i < tentativas; i += 1) {
+  while (Date.now() - inicio < orcamentoMs) {
     await esperar(intervaloMs);
     ultimaConsulta = await consultarNfse(clinicaToken, ref);
     if (ultimaConsulta.status !== 'processando_autorizacao') return ultimaConsulta;
