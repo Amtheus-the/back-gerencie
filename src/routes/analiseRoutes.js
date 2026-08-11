@@ -6,9 +6,11 @@ const express = require('express');
 const router = express.Router();
 const analiseController = require('../controllers/analiseController');
 const { verificarToken } = require('../middleware/authMiddleware');
+const { verificarPermissaoModulo } = require('../middleware/permissaoMiddleware');
 
 // Todas as rotas requerem autenticação
 router.use(verificarToken);
+router.use(verificarPermissaoModulo('analise'));
 
 /**
  * @route   POST /api/analise/tributaria

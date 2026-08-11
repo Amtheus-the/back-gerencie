@@ -9,6 +9,7 @@ const multer = require('multer');
 const multerS3 = require('multer-s3');
 const despesasController = require('../controllers/despesasController');
 const { verificarToken } = require('../middleware/authMiddleware');
+const { verificarPermissaoModulo } = require('../middleware/permissaoMiddleware');
 const { s3, S3_BUCKET } = require('../config/s3');
 
 // Multer-S3 para comprovantes de despesas
@@ -32,6 +33,7 @@ const uploadComprovante = multer({
 
 // Todas as rotas requerem autenticação
 router.use(verificarToken);
+router.use(verificarPermissaoModulo('despesas'));
 
 /**
  * @route   GET /api/despesas

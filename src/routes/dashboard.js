@@ -6,9 +6,11 @@ const express = require('express');
 const router = express.Router();
 const dashboardController = require('../controllers/dashboardController');
 const { verificarToken } = require('../middleware/authMiddleware');
+const { verificarPermissaoModulo } = require('../middleware/permissaoMiddleware');
 
 // Todas as rotas requerem autenticação
 router.use(verificarToken);
+router.use(verificarPermissaoModulo('dashboard'));
 
 // GET /api/dashboard/metricas?mes=10&ano=2025
 router.get('/metricas', dashboardController.getMetricas);

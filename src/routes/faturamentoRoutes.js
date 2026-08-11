@@ -7,9 +7,21 @@ const express = require('express');
 const router = express.Router();
 const faturamentoController = require('../controllers/faturamentoController');
 const { verificarToken } = require('../middleware/authMiddleware');
+const { verificarPermissaoModulo } = require('../middleware/permissaoMiddleware');
 
 // Todas as rotas requerem autenticação
 router.use(verificarToken);
+
+// Resumo financeiro do paciente é usado dentro da Ficha do Paciente — libera
+// pra quem tem acesso a "pacientes" também, não só a quem tem "faturamento".
+router.get('/paciente/:pacienteId/resumo', (req, res, next) => {
+  const temAcesso = req.user?.role === 'dentista' || req.user?.permissoes?.pacientes || req.user?.permissoes?.faturamento;
+  if (!temAcesso) return res.status(403).json({ success: false, message: 'Você não tem permissão para acessar este módulo.' });
+  next();
+}, faturamentoController.resumoFinanceiroPaciente);
+
+// Todas as demais rotas de faturamento exigem a permissão "faturamento"
+router.use(verificarPermissaoModulo('faturamento'));
 
 /**
  * @route   GET /api/faturamento/parametros-municipio
@@ -17,7 +29,6 @@ router.use(verificarToken);
  * @access  Private
  */
 router.get('/parametros-municipio', faturamentoController.consultarParametrosMunicipio);
-router.get('/paciente/:pacienteId/resumo', faturamentoController.resumoFinanceiroPaciente);
 
 /**
  * @route   GET /api/faturamento
