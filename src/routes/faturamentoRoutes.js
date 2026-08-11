@@ -60,14 +60,21 @@ router.put('/:id', faturamentoController.atualizarFaturamento);
 
 /**
  * @route   POST /api/faturamento/:id/emitir-nota
- * @desc    Emite Nota Fiscal via Webmania®
+ * @desc    Emite Nota Fiscal via Focus NFe
  * @access  Private
  */
 router.post('/:id/emitir-nota', faturamentoController.emitirNotaFiscal);
 
 /**
+ * @route   GET /api/faturamento/:id/status-nota
+ * @desc    Reconsulta o status de uma nota que ficou "processando"
+ * @access  Private
+ */
+router.get('/:id/status-nota', faturamentoController.statusNotaFiscal);
+
+/**
  * @route   POST /api/faturamento/:id/cancelar-nota
- * @desc    Cancela Nota Fiscal na Nuvem Fiscal
+ * @desc    Cancela Nota Fiscal na Focus NFe
  * @access  Private
  */
 router.post('/:id/cancelar-nota', faturamentoController.cancelarNotaFiscal);

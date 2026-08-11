@@ -92,6 +92,24 @@ async function consultarNfse(clinicaToken, ref) {
   return data;
 }
 
+const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Fica consultando a nota até ela sair de "processando_autorizacao" ou
+ * estourar as tentativas. A emissão em si é assíncrona (a prefeitura
+ * processa depois) — sem isso, o sistema marcaria a nota como "emitida"
+ * mesmo quando a prefeitura ainda vai rejeitar.
+ */
+async function aguardarAutorizacaoNfse(clinicaToken, ref, { tentativas = 8, intervaloMs = 1500 } = {}) {
+  let ultimaConsulta = null;
+  for (let i = 0; i < tentativas; i += 1) {
+    await esperar(intervaloMs);
+    ultimaConsulta = await consultarNfse(clinicaToken, ref);
+    if (ultimaConsulta.status !== 'processando_autorizacao') return ultimaConsulta;
+  }
+  return ultimaConsulta;
+}
+
 async function cancelarNfse(clinicaToken, ref, justificativa) {
   const { data } = await axios.delete(`${BASE_URL}/nfse/${encodeURIComponent(ref)}`, {
     headers: { ...authHeader(clinicaToken), 'Content-Type': 'application/json' },
@@ -100,4 +118,4 @@ async function cancelarNfse(clinicaToken, ref, justificativa) {
   return data;
 }
 
-module.exports = { cadastrarEmpresa, definirProximoNumeroRps, emitirNfse, consultarNfse, cancelarNfse };
+module.exports = { cadastrarEmpresa, definirProximoNumeroRps, emitirNfse, consultarNfse, aguardarAutorizacaoNfse, cancelarNfse };

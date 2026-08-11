@@ -517,17 +517,31 @@ exports.emitirNotaFiscal = async (req, res) => {
     console.log('Valor:', faturamento.valor);
     console.log('Payload:', JSON.stringify(nfsePayload, null, 2));
 
-    const { emitirNfse } = require('../services/focusNfeService');
+    const { emitirNfse, aguardarAutorizacaoNfse } = require('../services/focusNfeService');
     const ref = faturamento.id;
-    const resultado = await emitirNfse(clinica.focusNfeToken, ref, nfsePayload);
+    await emitirNfse(clinica.focusNfeToken, ref, nfsePayload);
 
+    const resultado = await aguardarAutorizacaoNfse(clinica.focusNfeToken, ref);
     console.log('✅ Resposta Focus NFe:', JSON.stringify(resultado, null, 2));
 
-    await faturamento.update({ notaEmitida: true, numeroNota: ref });
+    if (resultado.status === 'autorizado') {
+      await faturamento.update({ notaEmitida: true, numeroNota: ref, statusNota: 'autorizado', erroNota: null });
+      return res.json({ success: true, message: 'Nota Fiscal autorizada pela prefeitura!', data: resultado });
+    }
 
+    if (resultado.status === 'erro_autorizacao') {
+      const mensagemErro = (resultado.erros || []).map((e) => e.mensagem).join(' ') || 'Erro não especificado.';
+      await faturamento.update({ notaEmitida: false, numeroNota: null, statusNota: 'erro', erroNota: mensagemErro });
+      return res.status(422).json({ success: false, message: `Nota rejeitada pela prefeitura: ${mensagemErro}`, data: resultado });
+    }
+
+    // Ainda processando depois das tentativas — cidade mais lenta que o normal.
+    // Não marca como emitida; fica pra consultar de novo em /status-nota.
+    await faturamento.update({ notaEmitida: false, numeroNota: ref, statusNota: 'processando', erroNota: null });
     return res.json({
       success: true,
-      message: 'Nota Fiscal enviada para emissão! O processamento é assíncrono — confira o status em alguns segundos.',
+      aindaProcessando: true,
+      message: 'Nota enviada, a prefeitura ainda está processando. Confira o status em instantes.',
       data: resultado,
     });
 
@@ -665,6 +679,58 @@ exports.baixarNotaFiscal = async (req, res) => {
   } catch (error) {
     console.error('Erro ao baixar PDF:', error.response?.status, error.response?.data?.toString() || error.message);
     res.status(500).json({ success: false, message: 'Erro ao baixar PDF da nota fiscal' });
+  }
+};
+
+/**
+ * Reconsulta o status de uma nota que ficou "processando" (cidade mais lenta
+ * que o normal) e atualiza o faturamento com o resultado real.
+ * GET /api/faturamento/:id/status-nota
+ */
+exports.statusNotaFiscal = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const faturamento = await Faturamento.findOne({ where: { id, userId } });
+    if (!faturamento) return res.status(404).json({ success: false, message: 'Faturamento não encontrado' });
+
+    if (faturamento.statusNota !== 'processando' || !faturamento.numeroNota) {
+      return res.json({
+        success: true,
+        statusNota: faturamento.statusNota,
+        notaEmitida: faturamento.notaEmitida,
+        erroNota: faturamento.erroNota,
+      });
+    }
+
+    const { User, Clinica } = require('../models');
+    const usuario = await User.findByPk(userId);
+    const clinica = await Clinica.findByPk(usuario.clinicaId || usuario.clinica_id);
+    if (!clinica?.focusNfeToken) {
+      return res.status(422).json({ success: false, message: 'Clínica não cadastrada na Focus NFe.' });
+    }
+
+    const { consultarNfse } = require('../services/focusNfeService');
+    const consulta = await consultarNfse(clinica.focusNfeToken, faturamento.numeroNota);
+
+    if (consulta.status === 'autorizado') {
+      await faturamento.update({ notaEmitida: true, statusNota: 'autorizado', erroNota: null });
+    } else if (consulta.status === 'erro_autorizacao') {
+      const mensagemErro = (consulta.erros || []).map((e) => e.mensagem).join(' ') || 'Erro não especificado.';
+      await faturamento.update({ notaEmitida: false, numeroNota: null, statusNota: 'erro', erroNota: mensagemErro });
+    }
+
+    return res.json({
+      success: true,
+      statusNota: faturamento.statusNota,
+      notaEmitida: faturamento.notaEmitida,
+      erroNota: faturamento.erroNota,
+      data: consulta,
+    });
+  } catch (error) {
+    console.error('Erro ao consultar status da nota:', error.response?.data || error.message);
+    return res.status(500).json({ success: false, message: 'Erro ao consultar status da nota fiscal' });
   }
 };
 

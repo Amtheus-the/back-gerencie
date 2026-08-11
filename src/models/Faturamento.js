@@ -155,6 +155,18 @@ const Faturamento = sequelize.define('Faturamento', {
     field: 'nota_fiscal_url',
     comment: 'URL do PDF da nota fiscal (NuvemFiscal ou S3)'
   },
+  statusNota: {
+    type: DataTypes.STRING(30),
+    allowNull: true,
+    field: 'status_nota',
+    comment: 'processando | autorizado | erro — status real da nota junto à prefeitura (Focus NFe é assíncrono, notaEmitida só vira true quando autorizado)'
+  },
+  erroNota: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'erro_nota',
+    comment: 'Mensagem de erro da prefeitura quando statusNota = erro'
+  },
   comprovanteUrl: {
     type: DataTypes.STRING(500),
     allowNull: true,

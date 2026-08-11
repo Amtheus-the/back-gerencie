@@ -654,15 +654,28 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
       },
     };
 
-    const { emitirNfse } = require('../services/focusNfeService');
+    const { emitirNfse, aguardarAutorizacaoNfse } = require('../services/focusNfeService');
     const ref = faturamento.id;
-    const resultado = await emitirNfse(clinica.focusNfeToken, ref, nfsePayload);
+    await emitirNfse(clinica.focusNfeToken, ref, nfsePayload);
 
-    await faturamento.update({ notaEmitida: true, numeroNota: ref });
+    const resultado = await aguardarAutorizacaoNfse(clinica.focusNfeToken, ref);
 
+    if (resultado.status === 'autorizado') {
+      await faturamento.update({ notaEmitida: true, numeroNota: ref, statusNota: 'autorizado', erroNota: null });
+      return res.json({ success: true, message: 'Nota Fiscal autorizada pela prefeitura!', data: resultado });
+    }
+
+    if (resultado.status === 'erro_autorizacao') {
+      const mensagemErro = (resultado.erros || []).map((e) => e.mensagem).join(' ') || 'Erro não especificado.';
+      await faturamento.update({ notaEmitida: false, numeroNota: null, statusNota: 'erro', erroNota: mensagemErro });
+      return res.status(422).json({ success: false, message: `Nota rejeitada pela prefeitura: ${mensagemErro}`, data: resultado });
+    }
+
+    await faturamento.update({ notaEmitida: false, numeroNota: ref, statusNota: 'processando', erroNota: null });
     return res.json({
       success: true,
-      message: 'Nota Fiscal enviada para emissão! O processamento é assíncrono — confira o status em alguns segundos.',
+      aindaProcessando: true,
+      message: 'Nota enviada, a prefeitura ainda está processando. Confira o status em instantes.',
       data: resultado,
     });
 
