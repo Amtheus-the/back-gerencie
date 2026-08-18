@@ -635,6 +635,7 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
       data_emissao: new Date(faturamento.data || Date.now()).toISOString(),
       natureza_operacao: '1',
       optante_simples_nacional: ['1', '2'].includes(String(clinica.regimeTributario)),
+      ...(clinica.regimeEspecialTributacao ? { regime_especial_tributacao: clinica.regimeEspecialTributacao } : {}),
       prestador: {
         cnpj: cnpjClinica,
         inscricao_municipal: clinica.inscricao_municipal || clinica.inscricaoMunicipal,

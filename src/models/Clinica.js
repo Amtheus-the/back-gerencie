@@ -246,6 +246,12 @@ const Clinica = sequelize.define('Clinica', {
     field: 'codigo_tributario_municipio',
     comment: 'Código de serviço próprio do município (formato varia por cidade) — exigido por municípios com provedor Ginfes/ABRASF, além do item_lista_servico padrão LC116'
   },
+  regimeEspecialTributacao: {
+    type: DataTypes.STRING(2),
+    allowNull: true,
+    field: 'regime_especial_tributacao',
+    comment: '05=MEI do Simples Nacional, 06=ME ou EPP do Simples Nacional — exigido por municípios Ginfes/ABRASF quando a empresa é optante do Simples Nacional'
+  },
   focusNfeToken: {
     type: DataTypes.STRING(64),
     allowNull: true,
