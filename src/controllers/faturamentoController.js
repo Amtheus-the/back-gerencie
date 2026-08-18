@@ -506,6 +506,10 @@ exports.emitirNotaFiscal = async (req, res) => {
         item_lista_servico: clinica.itemListaServico,
         discriminacao: clinica.descricaoPadraoNota || faturamento.descricao,
         codigo_municipio: clinica.codigoMunicipioIbge,
+        // Municípios com provedor Ginfes/ABRASF (ex: São Bernardo do Campo) exigem
+        // esses dois campos além do item_lista_servico padrão — São Paulo não usa.
+        ...(clinica.aliquotaIssqn != null ? { aliquota: parseFloat(clinica.aliquotaIssqn) } : {}),
+        ...(clinica.codigoTributarioMunicipio ? { codigo_tributario_municipio: clinica.codigoTributarioMunicipio } : {}),
       },
     };
 

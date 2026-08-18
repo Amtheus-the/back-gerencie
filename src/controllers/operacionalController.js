@@ -651,6 +651,8 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
         item_lista_servico: clinica.itemListaServico,
         discriminacao: clinica.descricaoPadraoNota || faturamento.descricao,
         codigo_municipio: clinica.codigoMunicipioIbge,
+        ...(clinica.aliquotaIssqn != null ? { aliquota: parseFloat(clinica.aliquotaIssqn) } : {}),
+        ...(clinica.codigoTributarioMunicipio ? { codigo_tributario_municipio: clinica.codigoTributarioMunicipio } : {}),
       },
     };
 

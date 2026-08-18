@@ -234,6 +234,18 @@ const Clinica = sequelize.define('Clinica', {
     field: 'regime_tributario',
     comment: '1=Simples Nacional, 2=Simples c/ excesso, 3=Normal, 4=MEI — exigido pra cadastrar a empresa na Focus NFe'
   },
+  aliquotaIssqn: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: true,
+    field: 'aliquota_issqn',
+    comment: 'Alíquota do ISSQN (%) — exigida por municípios com provedor Ginfes/ABRASF (ex: São Bernardo do Campo), não usada em São Paulo'
+  },
+  codigoTributarioMunicipio: {
+    type: DataTypes.STRING(30),
+    allowNull: true,
+    field: 'codigo_tributario_municipio',
+    comment: 'Código de serviço próprio do município (formato varia por cidade) — exigido por municípios com provedor Ginfes/ABRASF, além do item_lista_servico padrão LC116'
+  },
   focusNfeToken: {
     type: DataTypes.STRING(64),
     allowNull: true,
