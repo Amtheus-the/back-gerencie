@@ -14,6 +14,30 @@ const PERMISSOES_PADRAO = {
   clinicaDashboard: false,
 };
 
+/**
+ * Lista todos os dentistas (dono + parceiros) da mesma clínica do usuário logado.
+ * Usado no filtro/seletor de dentista da Agenda — não pode usar o `listar` acima,
+ * que só traz quem foi criado pelo usuário logado. Um dentista parceiro (ex:
+ * Hellen) nunca criou ninguém, então esse filtro sempre voltava vazio pra ele/ela.
+ */
+exports.listarDentistasClinica = async (req, res) => {
+  try {
+    const usuarios = await User.findAll({
+      where: {
+        clinicaId: req.user.clinicaId,
+        role: ['dentista', 'dentista_parceiro'],
+        ativo: true,
+      },
+      attributes: ['id', 'nome', 'cor', 'role'],
+    });
+
+    res.json({ success: true, dentistas: usuarios });
+  } catch (err) {
+    console.error('Erro ao listar dentistas da clínica:', err);
+    res.status(500).json({ success: false, message: 'Erro ao listar dentistas da clínica' });
+  }
+};
+
 // Lista secretarias e dentistas parceiros criados pelo dentista logado
 exports.listar = async (req, res) => {
   try {

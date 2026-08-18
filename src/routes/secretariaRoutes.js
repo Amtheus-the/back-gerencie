@@ -6,6 +6,7 @@ const ctrl = require('../controllers/secretariaController');
 router.use(verificarToken);
 
 router.get('/',       ctrl.listar);
+router.get('/dentistas-clinica', ctrl.listarDentistasClinica);
 router.post('/',      ctrl.criar);
 router.put('/:id',    ctrl.atualizar);
 router.delete('/:id', ctrl.remover);
