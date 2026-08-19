@@ -3,7 +3,7 @@
  * Gerencia métricas, cálculos fiscais e dados consolidados
  */
 
-const { User, Faturamento, Despesa } = require('../models');
+const { User, Faturamento, Despesa, Clinica } = require('../models');
 const { Paciente } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('sequelize');
@@ -170,44 +170,86 @@ exports.getMetricas = async (req, res) => {
     }
     let darf = Math.max(0, calcular_irrf(baseCalculoIRPF));
 
-    // 2. PESSOA JURÍDICA - Simples Nacional (Anexo III - Serviços)
-    function calcular_aliquota_efetiva(rbt12, faturamento_mes) {
-      if (rbt12 === 0) {
-        if (faturamento_mes === 0) return 0;
-        if (0 <= faturamento_mes && faturamento_mes <= 180000) {
-          return 0.06;
-        } else if (faturamento_mes <= 360000) {
-          return (faturamento_mes * 0.112 - 9360) / faturamento_mes;
-        } else if (faturamento_mes <= 720000) {
-          return (faturamento_mes * 0.135 - 17640) / faturamento_mes;
-        } else if (faturamento_mes <= 1800000) {
-          return (faturamento_mes * 0.16 - 35640) / faturamento_mes;
-        } else if (faturamento_mes <= 3600000) {
-          return (faturamento_mes * 0.21 - 125640) / faturamento_mes;
-        } else if (faturamento_mes <= 4800000) {
-          return (faturamento_mes * 0.33 - 648000) / faturamento_mes;
-        } else {
-          return 0;
-        }
-      }
-      if (0 <= rbt12 && rbt12 <= 180000) {
+    // 2. PESSOA JURÍDICA — regime da clínica decide o motor de cálculo.
+    // regimeTributario: 1/2 = Simples Nacional, 3 = Lucro Presumido, 4 = MEI
+    // (MEI cai no ramo Simples por enquanto — DAS de MEI é valor fixo, não
+    // percentual, é um caso à parte que ainda não tratamos aqui).
+    const clinica = clinicaId ? await Clinica.findByPk(clinicaId, { attributes: ['regimeTributario', 'aliquotaIssqn'] }) : null;
+    const isLucroPresumido = clinica?.regimeTributario === '3';
+
+    function calcular_aliquota_efetiva_simples(rbt12, faturamento_mes) {
+      const base = rbt12 === 0 ? faturamento_mes : rbt12;
+      if (base === 0) return 0;
+      if (base <= 180000) {
         return 0.06;
-      } else if (rbt12 <= 360000) {
-        return (rbt12 * 0.112 - 9360) / rbt12;
-      } else if (rbt12 <= 720000) {
-        return (rbt12 * 0.135 - 17640) / rbt12;
-      } else if (rbt12 <= 1800000) {
-        return (rbt12 * 0.16 - 35640) / rbt12;
-      } else if (rbt12 <= 3600000) {
-        return (rbt12 * 0.21 - 125640) / rbt12;
-      } else if (rbt12 <= 4800000) {
-        return (rbt12 * 0.33 - 648000) / rbt12;
+      } else if (base <= 360000) {
+        return (base * 0.112 - 9360) / base;
+      } else if (base <= 720000) {
+        return (base * 0.135 - 17640) / base;
+      } else if (base <= 1800000) {
+        return (base * 0.16 - 35640) / base;
+      } else if (base <= 3600000) {
+        return (base * 0.21 - 125640) / base;
+      } else if (base <= 4800000) {
+        return (base * 0.33 - 648000) / base;
       } else {
         return 0;
       }
     }
-    const aliquotaEfetiva = calcular_aliquota_efetiva(rbt12, faturamentoPJ);
-    const das = faturamentoPJ * aliquotaEfetiva;
+
+    // Lucro Presumido (serviços): presunção de 32% da receita pra base de
+    // IRPJ/CSLL, PIS/COFINS cumulativo sobre a receita bruta, e ISS pela
+    // alíquota real cadastrada na clínica (fallback 5% se ainda não configurada).
+    function calcular_lucro_presumido(faturamento_mes, aliquotaIssqnClinica) {
+      const aliquotaIss = aliquotaIssqnClinica != null ? parseFloat(aliquotaIssqnClinica) / 100 : 0.05;
+      const baseIrpjCsll = faturamento_mes * 0.32;
+      const pis = faturamento_mes * 0.0065;
+      const cofins = faturamento_mes * 0.03;
+      const iss = faturamento_mes * aliquotaIss;
+      const irpj = baseIrpjCsll * 0.15;
+      const limiteAdicionalIrMensal = 20000;
+      const irAdicional = baseIrpjCsll > limiteAdicionalIrMensal ? (baseIrpjCsll - limiteAdicionalIrMensal) * 0.10 : 0;
+      const csll = baseIrpjCsll * 0.09;
+      return { pis, cofins, iss, irpj, irAdicional, csll };
+    }
+
+    let pessoaJuridica;
+    if (isLucroPresumido) {
+      const { pis, cofins, iss, irpj, irAdicional, csll } = calcular_lucro_presumido(faturamentoPJ, clinica?.aliquotaIssqn);
+      const dasEquivalente = pis + cofins + iss; // impostos recorrentes sobre faturamento
+      const impostoRenda = irpj + irAdicional + csll; // impostos sobre o lucro (presumido)
+      const impostoTotal = dasEquivalente + impostoRenda;
+      pessoaJuridica = {
+        regime: 'Lucro Presumido',
+        faturamento: faturamentoPJ.toFixed(2),
+        rbt12: null,
+        aliquotaEfetiva: (faturamentoPJ > 0 ? (impostoTotal / faturamentoPJ) * 100 : 0).toFixed(2),
+        das: dasEquivalente.toFixed(2),
+        impostoRenda: impostoRenda.toFixed(2),
+        impostoTotal: impostoTotal.toFixed(2),
+        detalhamento: {
+          pis: pis.toFixed(2),
+          cofins: cofins.toFixed(2),
+          iss: iss.toFixed(2),
+          irpj: irpj.toFixed(2),
+          irAdicional: irAdicional.toFixed(2),
+          csll: csll.toFixed(2)
+        }
+      };
+    } else {
+      const aliquotaEfetiva = calcular_aliquota_efetiva_simples(rbt12, faturamentoPJ);
+      const das = faturamentoPJ * aliquotaEfetiva;
+      pessoaJuridica = {
+        regime: 'Simples Nacional',
+        faturamento: faturamentoPJ.toFixed(2),
+        rbt12: rbt12.toFixed(2),
+        aliquotaEfetiva: (aliquotaEfetiva * 100).toFixed(2),
+        das: das.toFixed(2),
+        impostoRenda: '0.00',
+        impostoTotal: das.toFixed(2),
+        detalhamento: null
+      };
+    }
 
     res.json({
       success: true,
@@ -221,12 +263,7 @@ exports.getMetricas = async (req, res) => {
         dnz: dnz.toFixed(2),
         darf: darf.toFixed(2)
       },
-      pessoaJuridica: {
-        faturamento: faturamentoPJ.toFixed(2),
-        rbt12: rbt12.toFixed(2),
-        aliquotaEfetiva: (aliquotaEfetiva * 100).toFixed(2),
-        das: das.toFixed(2)
-      },
+      pessoaJuridica,
       despesasPorCategoria,
       despesasIndividuais,
       aniversariantesMes: aniversariantesMes.map(p => ({
@@ -355,7 +392,10 @@ exports.getDespesasPorCategoria = async (req, res) => {
 exports.calcularLucroPresumido = async (req, res) => {
   try {
     const userId = req.user.id;
+    const clinicaId = req.user.clinicaId;
     const { mes, ano, receitaMensal } = req.query;
+
+    const clinica = clinicaId ? await Clinica.findByPk(clinicaId, { attributes: ['aliquotaIssqn'] }) : null;
 
     let faturamentoPJ = 0;
 
@@ -388,9 +428,10 @@ exports.calcularLucroPresumido = async (req, res) => {
     const baseIR = 0.32;  // 32% para serviços
     const baseCSLL = 0.32; // 32% para serviços
 
+    const aliquotaIss = clinica?.aliquotaIssqn != null ? parseFloat(clinica.aliquotaIssqn) / 100 : 0.05;
     const pis = faturamentoPJ * 0.0065;
     const cofins = faturamentoPJ * 0.03;
-    const iss = faturamentoPJ * 0.05; // 5% (varia por município)
+    const iss = faturamentoPJ * aliquotaIss; // alíquota real da clínica (fallback 5% se não configurada)
 
     const irpjBaseCalculo = faturamentoPJ * baseIR;
     const csllBaseCalculo = faturamentoPJ * baseCSLL;
