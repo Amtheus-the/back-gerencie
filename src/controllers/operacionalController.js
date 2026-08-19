@@ -796,6 +796,33 @@ exports.registrarNotaManual = async (req, res) => {
 };
 
 /**
+ * Remove o anexo de uma nota registrada manualmente (ex: PDF errado subido
+ * por engano) — só limpa o registro local, não chama a Focus NFe, porque
+ * uma nota manual nunca foi emitida de verdade pela API (não existe nada
+ * pra cancelar na prefeitura). Pra nota emitida via API de verdade, o fluxo
+ * certo continua sendo "Cancelar NF" (cancelarNotaFiscalAdmin).
+ * DELETE /api/operacional/faturamentos/:id/nota-manual
+ */
+exports.removerNotaManual = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const faturamento = await Faturamento.findByPk(id);
+    if (!faturamento) return res.status(404).json({ success: false, message: 'Faturamento não encontrado' });
+
+    const isManual = !faturamento.numeroNota || String(faturamento.numeroNota).startsWith('MANUAL');
+    if (!isManual) {
+      return res.status(422).json({ success: false, message: 'Essa nota foi emitida via API — use "Cancelar NF" em vez de remover o anexo.' });
+    }
+
+    await faturamento.update({ notaEmitida: false, numeroNota: null, notaFiscalUrl: null });
+    return res.json({ success: true, message: 'Anexo removido com sucesso.' });
+  } catch (error) {
+    console.error('Erro ao remover nota manual:', error.message);
+    return res.status(500).json({ success: false, message: 'Erro ao remover anexo da nota' });
+  }
+};
+
+/**
  * Baixar/visualizar o PDF da nota fiscal de um faturamento (admin)
  * Funciona tanto para NF anexada manualmente (arquivo no S3) quanto para
  * NF emitida via API (busca o PDF direto na Focus NFe)
