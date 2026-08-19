@@ -71,6 +71,48 @@ async function sendPasswordReset(to, link) {
   await transporter.sendMail(mailOptions);
 }
 
+/**
+ * Avisa que a conta foi bloqueada temporariamente por várias tentativas de
+ * login erradas seguidas (proteção contra força bruta), com link pra
+ * redefinir a senha caso o usuário tenha esquecido.
+ * @param {string} to - E-mail de destino
+ * @param {string} link - Link para redefinir senha
+ * @param {number} minutos - Duração do bloqueio em minutos
+ */
+async function sendContaBloqueada(to, link, minutos) {
+  if (!transporter) {
+    console.warn(`✉️  sendContaBloqueada: transporter ausente — não será enviado e-mail para ${to}`);
+    return;
+  }
+  const mailOptions = {
+    from: `Gerencie <${process.env.EMAIL_USER}>`,
+    to,
+    subject: '⚠️ Conta bloqueada temporariamente - Gerencie',
+    html: `
+      <div style="max-width:460px;margin:0 auto;padding:32px 24px;background:#f7fafd;border-radius:12px;font-family:sans-serif;border:1px solid #e3e8ee;">
+        <div style="text-align:center;">
+          <h2 style="color:#DC2626;margin:0 0 8px 0;">Conta bloqueada temporariamente</h2>
+        </div>
+        <p style="font-size:15px;color:#333;margin:20px 0;">
+          Detectamos várias tentativas de login com senha incorreta na sua conta do Gerencie.
+          Por segurança, o login ficou bloqueado por <strong>${minutos} minutos</strong>.
+        </p>
+        <p style="font-size:15px;color:#333;margin:20px 0;">
+          Se foi você que errou a senha, pode esperar e tentar de novo, ou redefinir sua senha agora mesmo:
+        </p>
+        <div style="text-align:center;margin:24px 0;">
+          <a href="${link}" style="display:inline-block;background:#F97316;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;">Redefinir senha</a>
+        </div>
+        <p style="font-size:13px;color:#888;">
+          Se não foi você quem tentou entrar, alguém pode estar tentando acessar sua conta —
+          redefina sua senha assim que possível.
+        </p>
+      </div>
+    `
+  };
+  await transporter.sendMail(mailOptions);
+}
+
 // Admins que recebem notificação de novo lançamento
 const ADMIN_EMAILS = [
   'joelma.visiontax@gmail.com',
@@ -127,5 +169,6 @@ async function notificarNovoFaturamento({ dentista, clinica, paciente, valor, da
 module.exports = {
   sendValidationToken,
   sendPasswordReset,
+  sendContaBloqueada,
   notificarNovoFaturamento,
 };

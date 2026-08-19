@@ -39,7 +39,7 @@ exports.resetPassword = async (req, res) => {
   }
 };
 const crypto = require('crypto');
-const { sendPasswordReset } = require('../services/emailService');
+const { sendPasswordReset, sendContaBloqueada } = require('../services/emailService');
 /**
  * Envia link de recuperação de senha para o e-mail do usuário
  */
@@ -300,11 +300,16 @@ exports.register = async (req, res) => {
 /**
  * Autentica usuário e retorna token
  */
+// Proteção contra força bruta: depois desse nº de tentativas erradas
+// seguidas, bloqueia o login por um tempo e avisa por e-mail.
+const LOGIN_MAX_TENTATIVAS = 5;
+const LOGIN_BLOQUEIO_MINUTOS = 15;
+
 exports.login = async (req, res) => {
   try {
     console.log('🔵 [Backend] POST /api/auth/login - Requisição recebida');
     console.log('📧 Email:', req.body.email);
-    
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       console.log('❌ [Backend] Erros de validação:', errors.array());
@@ -314,10 +319,10 @@ exports.login = async (req, res) => {
     const { email, senha } = req.body;
 
     console.log('🔍 [Backend] Buscando usuário no banco...');
-    
+
     // Busca usuário no banco
     const user = await User.findOne({ where: { email } });
-    
+
     if (!user) {
       console.log('❌ [Backend] Usuário não encontrado');
       return res.status(401).json({
@@ -326,22 +331,70 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Conta já bloqueada por tentativas anteriores?
+    if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+      const minutosRestantes = Math.ceil((new Date(user.lockedUntil) - new Date()) / 60000);
+      console.log('🔒 [Backend] Conta bloqueada, restam', minutosRestantes, 'min');
+      return res.status(429).json({
+        success: false,
+        message: `Muitas tentativas de login incorretas. Tente novamente em ${minutosRestantes} minuto(s) ou redefina sua senha.`,
+        bloqueado: true,
+        minutosRestantes,
+      });
+    }
+
     console.log('✅ [Backend] Usuário encontrado:', user.email);
     console.log('🔐 [Backend] Verificando senha...');
-    
+
     // Verifica senha
     const senhaValida = await user.verificarSenha(senha);
-    
+
     if (!senhaValida) {
       console.log('❌ [Backend] Senha incorreta');
+
+      user.loginAttempts = (user.loginAttempts || 0) + 1;
+
+      if (user.loginAttempts >= LOGIN_MAX_TENTATIVAS) {
+        user.lockedUntil = new Date(Date.now() + LOGIN_BLOQUEIO_MINUTOS * 60 * 1000);
+        user.loginAttempts = 0;
+
+        // Gera token de redefinição (mesmo fluxo do "esqueci minha senha")
+        // e avisa por e-mail — não bloqueia a resposta se o envio falhar.
+        try {
+          const resetToken = crypto.randomBytes(32).toString('hex');
+          user.passwordResetToken = resetToken;
+          user.passwordResetExpires = Date.now() + 60 * 60 * 1000;
+          const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}&email=${encodeURIComponent(user.email)}`;
+          await sendContaBloqueada(user.email, resetLink, LOGIN_BLOQUEIO_MINUTOS);
+        } catch (emailErr) {
+          console.error('❌ [Backend] Falha ao enviar e-mail de bloqueio:', emailErr.message);
+        }
+
+        await user.save();
+        return res.status(429).json({
+          success: false,
+          message: `Muitas tentativas de login incorretas. Sua conta foi bloqueada por ${LOGIN_BLOQUEIO_MINUTOS} minutos por segurança — enviamos um e-mail com opção de redefinir a senha.`,
+          bloqueado: true,
+          minutosRestantes: LOGIN_BLOQUEIO_MINUTOS,
+        });
+      }
+
+      await user.save();
       return res.status(401).json({
         success: false,
         message: 'Email ou senha incorretos'
       });
     }
 
+    // Login válido — zera o contador de tentativas
+    if (user.loginAttempts > 0 || user.lockedUntil) {
+      user.loginAttempts = 0;
+      user.lockedUntil = null;
+      await user.save();
+    }
+
     console.log('✅ [Backend] Senha correta');
-    
+
     // Verifica se usuário está ativo
     if (!user.ativo) {
       console.log('❌ [Backend] Usuário desativado');

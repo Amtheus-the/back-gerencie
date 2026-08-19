@@ -135,6 +135,19 @@ const User = sequelize.define('User', {
     allowNull: true,
     comment: 'Timestamp de expiração do token de recuperação'
   },
+  loginAttempts: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    field: 'login_attempts',
+    comment: 'Tentativas de login com senha errada desde o último sucesso — zera a cada login válido'
+  },
+  lockedUntil: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    field: 'locked_until',
+    comment: 'Conta bloqueada pra login até essa data/hora (proteção contra força bruta)'
+  },
   // ─── Integração Google Calendar ───
   googleAccessToken: {
     type: DataTypes.TEXT,
