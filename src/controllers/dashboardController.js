@@ -197,27 +197,58 @@ exports.getMetricas = async (req, res) => {
       }
     }
 
-    // Lucro Presumido (serviços): presunção de 32% da receita pra base de
-    // IRPJ/CSLL, PIS/COFINS cumulativo sobre a receita bruta, e ISS pela
-    // alíquota real cadastrada na clínica (fallback 5% se ainda não configurada).
-    function calcular_lucro_presumido(faturamento_mes, aliquotaIssqnClinica) {
-      const aliquotaIss = aliquotaIssqnClinica != null ? parseFloat(aliquotaIssqnClinica) / 100 : 0.05;
-      const baseIrpjCsll = faturamento_mes * 0.32;
-      const pis = faturamento_mes * 0.0065;
-      const cofins = faturamento_mes * 0.03;
-      const iss = faturamento_mes * aliquotaIss;
-      const irpj = baseIrpjCsll * 0.15;
-      const limiteAdicionalIrMensal = 20000;
-      const irAdicional = baseIrpjCsll > limiteAdicionalIrMensal ? (baseIrpjCsll - limiteAdicionalIrMensal) * 0.10 : 0;
+    // Lucro Presumido (serviços): PIS/COFINS/ISS são mensais, sobre a receita
+    // do mês. IRPJ/CSLL, por lei, são apurados por TRIMESTRE CIVIL (jan-mar,
+    // abr-jun, jul-set, out-dez) — não por mês — com o limite do adicional de
+    // IRPJ valendo R$ 20.000 × 3 = R$ 60.000 no trimestre. Alíquota do ISS usa
+    // a real cadastrada na clínica (fallback 5% se ainda não configurada).
+    async function calcular_irpj_csll_trimestral(clinicaId, mesConsulta, anoConsulta) {
+      const trimestreIndex = Math.floor((mesConsulta - 1) / 3); // 0..3
+      const mesesTrimestre = [1, 2, 3].map((_, i) => trimestreIndex * 3 + i + 1);
+      const dataInicioTrim = new Date(anoConsulta, trimestreIndex * 3, 1);
+      const dataFimTrim = new Date(anoConsulta, trimestreIndex * 3 + 3, 0);
+
+      const faturamentosTrim = await Faturamento.findAll({
+        where: {
+          clinicaId,
+          tipoPessoa: 'PJ',
+          declarar: true,
+          data: { [Op.between]: [dataInicioTrim, dataFimTrim] }
+        }
+      });
+      const faturamentoTrimestral = faturamentosTrim.reduce((sum, f) => sum + parseFloat(f.valor), 0);
+
+      const baseIrpjCsll = faturamentoTrimestral * 0.32;
+      const irpjBase = baseIrpjCsll * 0.15;
+      const limiteAdicionalTrimestral = 20000 * 3;
+      const irAdicional = Math.max(0, baseIrpjCsll - limiteAdicionalTrimestral) * 0.10;
+      const irpj = irpjBase + irAdicional;
       const csll = baseIrpjCsll * 0.09;
-      return { pis, cofins, iss, irpj, irAdicional, csll };
+
+      const labelsTrimestre = ['1º Trimestre (Jan-Mar)', '2º Trimestre (Abr-Jun)', '3º Trimestre (Jul-Set)', '4º Trimestre (Out-Dez)'];
+      return {
+        irpj, irAdicional, csll,
+        faturamentoTrimestral,
+        trimestreLabel: labelsTrimestre[trimestreIndex],
+        meses: mesesTrimestre
+      };
+    }
+
+    function calcular_pis_cofins_iss_mensal(faturamento_mes, aliquotaIssqnClinica) {
+      const aliquotaIss = aliquotaIssqnClinica != null ? parseFloat(aliquotaIssqnClinica) / 100 : 0.05;
+      return {
+        pis: faturamento_mes * 0.0065,
+        cofins: faturamento_mes * 0.03,
+        iss: faturamento_mes * aliquotaIss
+      };
     }
 
     let pessoaJuridica;
     if (isLucroPresumido) {
-      const { pis, cofins, iss, irpj, irAdicional, csll } = calcular_lucro_presumido(faturamentoPJ, clinica?.aliquotaIssqn);
-      const dasEquivalente = pis + cofins + iss; // impostos recorrentes sobre faturamento
-      const impostoRenda = irpj + irAdicional + csll; // impostos sobre o lucro (presumido)
+      const { pis, cofins, iss } = calcular_pis_cofins_iss_mensal(faturamentoPJ, clinica?.aliquotaIssqn);
+      const { irpj, irAdicional, csll, trimestreLabel, faturamentoTrimestral } = await calcular_irpj_csll_trimestral(clinicaId, parseInt(mesConsulta), parseInt(anoConsulta));
+      const dasEquivalente = pis + cofins + iss; // impostos recorrentes sobre faturamento (mensal)
+      const impostoRenda = irpj + irAdicional + csll; // IRPJ/CSLL — apuração do TRIMESTRE, não do mês
       const impostoTotal = dasEquivalente + impostoRenda;
       pessoaJuridica = {
         regime: 'Lucro Presumido',
@@ -227,6 +258,8 @@ exports.getMetricas = async (req, res) => {
         das: dasEquivalente.toFixed(2),
         impostoRenda: impostoRenda.toFixed(2),
         impostoTotal: impostoTotal.toFixed(2),
+        trimestreLabel,
+        faturamentoTrimestral: faturamentoTrimestral.toFixed(2),
         detalhamento: {
           pis: pis.toFixed(2),
           cofins: cofins.toFixed(2),
