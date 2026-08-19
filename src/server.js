@@ -107,25 +107,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rota de debug para gerar token JWT pelo email (deve ser aberta)
-// jwt e User já importados no topo do arquivo
-app.get('/api/token/:email', async (req, res) => {
-  try {
-    const email = req.params.email;
-    const user = await User.findOne({ where: { email } });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Usuário não encontrado' });
-    }
-    if (!user.ativo) {
-      return res.status(403).json({ success: false, message: 'Usuário inativo' });
-    }
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || '7d' });
-    res.json({ token });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Erro ao gerar token', error: err.message });
-  }
-});
-
 // Rotas
 app.use('/api/auth', authRoutes);
 app.use('/api/despesas', despesasRoutes);
@@ -168,25 +149,6 @@ app.use('/api/termos', termoRoutes);
 const documentoRoutes = require('./routes/documentoRoutes');
 app.use('/api/documentos', documentoRoutes);
 
-// Rota de debug para gerar token JWT pelo email
-const jwt = require('jsonwebtoken');
-const { User } = require('./models');
-app.get('/api/token/:email', async (req, res) => {
-  try {
-    const email = req.params.email;
-    const user = await User.findOne({ where: { email } });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Usuário não encontrado' });
-    }
-    if (!user.ativo) {
-      return res.status(403).json({ success: false, message: 'Usuário inativo' });
-    }
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || '7d' });
-    res.json({ token });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Erro ao gerar token', error: err.message });
-  }
-});
 // Middleware de autenticação
 const { verificarToken } = require('./middleware/authMiddleware');
 
