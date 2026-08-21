@@ -78,6 +78,36 @@ const Faturamento = sequelize.define('Faturamento', {
     allowNull: true,
     comment: 'Tipo de pessoa do pagador'
   },
+  // Endereço do pagador — usado na nota fiscal quando o pagador é diferente
+  // do beneficiário e não está cadastrado como paciente no sistema.
+  pagadorCep: {
+    type: DataTypes.STRING(9),
+    allowNull: true,
+  },
+  pagadorLogradouro: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  pagadorNumero: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+  },
+  pagadorComplemento: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  pagadorBairro: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  pagadorCidade: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  pagadorEstado: {
+    type: DataTypes.STRING(2),
+    allowNull: true,
+  },
   // Foreign Keys opcionais para relacionamentos
   pacienteId: {
     type: DataTypes.UUID,

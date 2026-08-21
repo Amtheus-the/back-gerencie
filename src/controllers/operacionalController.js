@@ -607,18 +607,20 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
         || await Paciente.findOne({ where: { cpf_cnpj: cpfLimpo } });
     }
 
-    const cpfTomador  = (paciente?.cpf_cnpj || faturamento.cpf || faturamento.pagador_cpf || '').replace(/\D/g, '');
-    const cnpjTomador = (faturamento.cnpj || faturamento.pagador_cnpj || '').replace(/\D/g, '');
-    const nomeTomador = paciente?.nome || faturamento.paciente || faturamento.pagador_nome || '';
-    const isPJ = faturamento.tipo_pessoa === 'PJ';
+    // Quando há pagador diferente do beneficiário, a nota tem que sair no
+    // nome do pagador, não do paciente que recebeu o serviço.
+    const pagadorDiferente = !!(faturamento.pagadorNome && faturamento.pagadorNome.trim());
+    const isPJ = pagadorDiferente ? faturamento.pagadorTipoPessoa === 'PJ' : faturamento.tipoPessoa === 'PJ';
+    const nomeTomador = pagadorDiferente ? faturamento.pagadorNome : (paciente?.nome || faturamento.paciente || '');
+    const documentoTomador = ((pagadorDiferente ? faturamento.pagadorCpf : (paciente?.cpfCnpj || faturamento.cpf)) || '').replace(/\D/g, '');
     const cnpjClinica = (clinica.cnpj || '').replace(/\D/g, '');
 
     // Valida CPF/CNPJ do tomador antes de enviar
-    if (isPJ && cnpjTomador.length !== 14) {
-      return res.status(422).json({ success: false, message: `CNPJ do tomador inválido ou não cadastrado (encontrado: "${cnpjTomador}"). Verifique o cadastro do paciente/empresa.` });
+    if (isPJ && documentoTomador.length !== 14) {
+      return res.status(422).json({ success: false, message: `CNPJ do tomador inválido ou não cadastrado (encontrado: "${documentoTomador}"). Verifique o cadastro do paciente/empresa.` });
     }
-    if (!isPJ && cpfTomador.length !== 11) {
-      return res.status(422).json({ success: false, message: `CPF do tomador inválido ou não cadastrado (encontrado: "${cpfTomador}"). Verifique o CPF no lançamento ou no cadastro do paciente.` });
+    if (!isPJ && documentoTomador.length !== 11) {
+      return res.status(422).json({ success: false, message: `CPF do tomador inválido ou não cadastrado (encontrado: "${documentoTomador}"). Verifique o CPF no lançamento ou no cadastro do paciente.` });
     }
 
     if (!clinica.focusNfeToken) {
@@ -632,21 +634,39 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
     }
 
     const { buscarCodigoMunicipioIbge } = require('../services/focusNfeService');
-    let tomadorEndereco = null;
-    if (paciente?.logradouro && paciente?.cidade && paciente?.estado) {
-      const codigoMunicipioTomador = await buscarCodigoMunicipioIbge(paciente.cidade, paciente.estado);
-      if (codigoMunicipioTomador) {
-        tomadorEndereco = {
-          logradouro: paciente.logradouro,
-          numero: paciente.numero || 'S/N',
-          ...(paciente.complemento ? { complemento: paciente.complemento } : {}),
-          bairro: paciente.bairro || '',
-          codigo_municipio: codigoMunicipioTomador,
-          uf: paciente.estado,
-          cep: (paciente.cep || '').replace(/\D/g, ''),
-        };
-      }
+    async function montarEnderecoTomador({ logradouro, numero, complemento, bairro, cidade, estado, cep }) {
+      if (!logradouro || !cidade || !estado) return null;
+      const codigoMunicipioTomador = await buscarCodigoMunicipioIbge(cidade, estado);
+      if (!codigoMunicipioTomador) return null;
+      return {
+        logradouro,
+        numero: numero || 'S/N',
+        ...(complemento ? { complemento } : {}),
+        bairro: bairro || '',
+        codigo_municipio: codigoMunicipioTomador,
+        uf: estado,
+        cep: (cep || '').replace(/\D/g, ''),
+      };
     }
+    const tomadorEndereco = pagadorDiferente
+      ? await montarEnderecoTomador({
+          logradouro: faturamento.pagadorLogradouro,
+          numero: faturamento.pagadorNumero,
+          complemento: faturamento.pagadorComplemento,
+          bairro: faturamento.pagadorBairro,
+          cidade: faturamento.pagadorCidade,
+          estado: faturamento.pagadorEstado,
+          cep: faturamento.pagadorCep,
+        })
+      : await montarEnderecoTomador({
+          logradouro: paciente?.logradouro,
+          numero: paciente?.numero,
+          complemento: paciente?.complemento,
+          bairro: paciente?.bairro,
+          cidade: paciente?.cidade,
+          estado: paciente?.estado,
+          cep: paciente?.cep,
+        });
 
     const nfsePayload = {
       data_emissao: new Date(faturamento.data || Date.now()).toISOString(),
@@ -659,7 +679,7 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
         codigo_municipio: clinica.codigoMunicipioIbge,
       },
       tomador: {
-        ...(isPJ ? { cnpj: cnpjTomador } : { cpf: cpfTomador }),
+        ...(isPJ ? { cnpj: documentoTomador } : { cpf: documentoTomador }),
         razao_social: nomeTomador,
         ...(paciente?.email || faturamento.email ? { email: paciente?.email || faturamento.email } : {}),
         ...(tomadorEndereco ? { endereco: tomadorEndereco } : {}),
@@ -668,7 +688,7 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
         valor_servicos: parseFloat(faturamento.valor),
         iss_retido: false,
         item_lista_servico: clinica.itemListaServico,
-        discriminacao: clinica.descricaoPadraoNota || faturamento.descricao,
+        discriminacao: faturamento.observacoes || clinica.descricaoPadraoNota || faturamento.descricao,
         codigo_municipio: clinica.codigoMunicipioIbge,
         ...(clinica.aliquotaIssqn != null ? { aliquota: parseFloat(clinica.aliquotaIssqn) } : {}),
         ...(clinica.codigoTributarioMunicipio ? { codigo_tributario_municipio: clinica.codigoTributarioMunicipio } : {}),

@@ -172,7 +172,8 @@ exports.criarFaturamento = async (req, res) => {
   const userId = req.user.id;
   let { descricao, valor, data, formaPagamento, pacienteId, paciente_id, paciente, tipoPessoa, observacoes, cpf, declarar,
         maquinaCartaoId, parcelasCartao, cartaoAntecipado, taxaCartaoResponsavel, orcamentoId,
-        pagadorNome, pagadorCpf, pagadorTipoPessoa } = req.body;
+        pagadorNome, pagadorCpf, pagadorTipoPessoa,
+        pagadorCep, pagadorLogradouro, pagadorNumero, pagadorComplemento, pagadorBairro, pagadorCidade, pagadorEstado } = req.body;
   // Aceita tanto pacienteId (camelCase, atributo real do model) quanto paciente_id (compat com clientes antigos)
   pacienteId = pacienteId || paciente_id || null;
   console.log('🔎 [DEBUG] Corpo da requisição faturamento:', req.body);
@@ -235,6 +236,13 @@ exports.criarFaturamento = async (req, res) => {
       pagadorNome: pagadorNome || null,
       pagadorCpf: pagadorCpf || null,
       pagadorTipoPessoa: pagadorTipoPessoa || null,
+      pagadorCep: pagadorCep || null,
+      pagadorLogradouro: pagadorLogradouro || null,
+      pagadorNumero: pagadorNumero || null,
+      pagadorComplemento: pagadorComplemento || null,
+      pagadorBairro: pagadorBairro || null,
+      pagadorCidade: pagadorCidade || null,
+      pagadorEstado: pagadorEstado || null,
       declarar: declarar !== undefined ? Boolean(declarar) : true,
       orcamentoId: orcamentoId || null,
       ...(taxaCartaoValor !== null && {
@@ -460,11 +468,12 @@ exports.emitirNotaFiscal = async (req, res) => {
     }
     console.log('👤 Paciente encontrado:', paciente ? `${paciente.nome} / ${paciente.email}` : 'NÃO ENCONTRADO');
 
-    // Dados do tomador
-    const cpfTomador = (paciente?.cpf_cnpj || faturamento.cpf || faturamento.pagador_cpf || '').replace(/\D/g, '');
-    const cnpjTomador = (faturamento.cnpj || faturamento.pagador_cnpj || '').replace(/\D/g, '');
-    const nomeTomador = paciente?.nome || faturamento.paciente || faturamento.pagador_nome || '';
-    const isPJ = faturamento.tipo_pessoa === 'PJ';
+    // Dados do tomador — quando há pagador diferente do beneficiário, a nota
+    // tem que sair no nome do pagador, não do paciente que recebeu o serviço.
+    const pagadorDiferente = !!(faturamento.pagadorNome && faturamento.pagadorNome.trim());
+    const isPJ = pagadorDiferente ? faturamento.pagadorTipoPessoa === 'PJ' : faturamento.tipoPessoa === 'PJ';
+    const nomeTomador = pagadorDiferente ? faturamento.pagadorNome : (paciente?.nome || faturamento.paciente || '');
+    const documentoTomador = ((pagadorDiferente ? faturamento.pagadorCpf : (paciente?.cpfCnpj || faturamento.cpf)) || '').replace(/\D/g, '');
 
     // Inscrição municipal da clínica (campo no banco)
     const inscricaoMunicipal = clinica.inscricao_municipal || clinica.inscricaoMunicipal || '7929948-2';
@@ -485,24 +494,44 @@ exports.emitirNotaFiscal = async (req, res) => {
       });
     }
 
-    // Monta o endereço do tomador a partir do cadastro do paciente, quando tiver
-    // dado suficiente — sem isso a nota sai sem endereço mesmo com a ficha completa.
+    // Monta o endereço do tomador — do pagador quando ele é diferente do
+    // beneficiário (pode não estar cadastrado como paciente, daí vir do
+    // próprio lançamento), senão do cadastro do paciente. Sem isso a nota
+    // sai sem endereço mesmo com a ficha ou o pagador com dado completo.
     const { buscarCodigoMunicipioIbge } = require('../services/focusNfeService');
-    let tomadorEndereco = null;
-    if (paciente?.logradouro && paciente?.cidade && paciente?.estado) {
-      const codigoMunicipioTomador = await buscarCodigoMunicipioIbge(paciente.cidade, paciente.estado);
-      if (codigoMunicipioTomador) {
-        tomadorEndereco = {
-          logradouro: paciente.logradouro,
-          numero: paciente.numero || 'S/N',
-          ...(paciente.complemento ? { complemento: paciente.complemento } : {}),
-          bairro: paciente.bairro || '',
-          codigo_municipio: codigoMunicipioTomador,
-          uf: paciente.estado,
-          cep: (paciente.cep || '').replace(/\D/g, ''),
-        };
-      }
+    async function montarEnderecoTomador({ logradouro, numero, complemento, bairro, cidade, estado, cep }) {
+      if (!logradouro || !cidade || !estado) return null;
+      const codigoMunicipioTomador = await buscarCodigoMunicipioIbge(cidade, estado);
+      if (!codigoMunicipioTomador) return null;
+      return {
+        logradouro,
+        numero: numero || 'S/N',
+        ...(complemento ? { complemento } : {}),
+        bairro: bairro || '',
+        codigo_municipio: codigoMunicipioTomador,
+        uf: estado,
+        cep: (cep || '').replace(/\D/g, ''),
+      };
     }
+    const tomadorEndereco = pagadorDiferente
+      ? await montarEnderecoTomador({
+          logradouro: faturamento.pagadorLogradouro,
+          numero: faturamento.pagadorNumero,
+          complemento: faturamento.pagadorComplemento,
+          bairro: faturamento.pagadorBairro,
+          cidade: faturamento.pagadorCidade,
+          estado: faturamento.pagadorEstado,
+          cep: faturamento.pagadorCep,
+        })
+      : await montarEnderecoTomador({
+          logradouro: paciente?.logradouro,
+          numero: paciente?.numero,
+          complemento: paciente?.complemento,
+          bairro: paciente?.bairro,
+          cidade: paciente?.cidade,
+          estado: paciente?.estado,
+          cep: paciente?.cep,
+        });
 
     // Montar payload no formato da Focus NFe
     const nfsePayload = {
@@ -516,7 +545,7 @@ exports.emitirNotaFiscal = async (req, res) => {
         codigo_municipio: clinica.codigoMunicipioIbge,
       },
       tomador: {
-        ...(isPJ ? { cnpj: cnpjTomador } : { cpf: cpfTomador }),
+        ...(isPJ ? { cnpj: documentoTomador } : { cpf: documentoTomador }),
         razao_social: nomeTomador,
         ...(paciente?.email || faturamento.email ? { email: paciente?.email || faturamento.email } : {}),
         ...(tomadorEndereco ? { endereco: tomadorEndereco } : {}),
@@ -525,7 +554,7 @@ exports.emitirNotaFiscal = async (req, res) => {
         valor_servicos: parseFloat(faturamento.valor),
         iss_retido: false,
         item_lista_servico: clinica.itemListaServico,
-        discriminacao: clinica.descricaoPadraoNota || faturamento.descricao,
+        discriminacao: faturamento.observacoes || clinica.descricaoPadraoNota || faturamento.descricao,
         codigo_municipio: clinica.codigoMunicipioIbge,
         // Municípios com provedor Ginfes/ABRASF (ex: São Bernardo do Campo) exigem
         // esses dois campos além do item_lista_servico padrão — São Paulo não usa.
@@ -537,7 +566,7 @@ exports.emitirNotaFiscal = async (req, res) => {
     console.log('--- DEBUG NFS-e (Focus NFe) ---');
     console.log('CNPJ Clínica:', cnpjClinica);
     console.log('IM Clínica:', inscricaoMunicipal);
-    console.log('Tomador:', isPJ ? `CNPJ: ${cnpjTomador}` : `CPF: ${cpfTomador}`);
+    console.log('Tomador:', isPJ ? `CNPJ: ${documentoTomador}` : `CPF: ${documentoTomador}`);
     console.log('Nome Tomador:', nomeTomador);
     console.log('Valor:', faturamento.valor);
     console.log('Payload:', JSON.stringify(nfsePayload, null, 2));
