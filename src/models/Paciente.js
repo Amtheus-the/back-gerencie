@@ -27,11 +27,6 @@ const Paciente = sequelize.define('Paciente', {
     allowNull: true,
     comment: 'CPF ou CNPJ (formato: 000.000.000-00 ou 00.000.000/0000-00)'
   },
-  tipoPessoa: {
-    type: DataTypes.ENUM('PF', 'PJ'),
-    allowNull: false,
-    defaultValue: 'PF'
-  },
   email: {
     type: DataTypes.STRING,
     allowNull: true,

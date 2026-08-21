@@ -631,6 +631,23 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
       });
     }
 
+    const { buscarCodigoMunicipioIbge } = require('../services/focusNfeService');
+    let tomadorEndereco = null;
+    if (paciente?.logradouro && paciente?.cidade && paciente?.estado) {
+      const codigoMunicipioTomador = await buscarCodigoMunicipioIbge(paciente.cidade, paciente.estado);
+      if (codigoMunicipioTomador) {
+        tomadorEndereco = {
+          logradouro: paciente.logradouro,
+          numero: paciente.numero || 'S/N',
+          ...(paciente.complemento ? { complemento: paciente.complemento } : {}),
+          bairro: paciente.bairro || '',
+          codigo_municipio: codigoMunicipioTomador,
+          uf: paciente.estado,
+          cep: (paciente.cep || '').replace(/\D/g, ''),
+        };
+      }
+    }
+
     const nfsePayload = {
       data_emissao: new Date(faturamento.data || Date.now()).toISOString(),
       natureza_operacao: '1',
@@ -645,6 +662,7 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
         ...(isPJ ? { cnpj: cnpjTomador } : { cpf: cpfTomador }),
         razao_social: nomeTomador,
         ...(paciente?.email || faturamento.email ? { email: paciente?.email || faturamento.email } : {}),
+        ...(tomadorEndereco ? { endereco: tomadorEndereco } : {}),
       },
       servico: {
         valor_servicos: parseFloat(faturamento.valor),

@@ -485,6 +485,25 @@ exports.emitirNotaFiscal = async (req, res) => {
       });
     }
 
+    // Monta o endereço do tomador a partir do cadastro do paciente, quando tiver
+    // dado suficiente — sem isso a nota sai sem endereço mesmo com a ficha completa.
+    const { buscarCodigoMunicipioIbge } = require('../services/focusNfeService');
+    let tomadorEndereco = null;
+    if (paciente?.logradouro && paciente?.cidade && paciente?.estado) {
+      const codigoMunicipioTomador = await buscarCodigoMunicipioIbge(paciente.cidade, paciente.estado);
+      if (codigoMunicipioTomador) {
+        tomadorEndereco = {
+          logradouro: paciente.logradouro,
+          numero: paciente.numero || 'S/N',
+          ...(paciente.complemento ? { complemento: paciente.complemento } : {}),
+          bairro: paciente.bairro || '',
+          codigo_municipio: codigoMunicipioTomador,
+          uf: paciente.estado,
+          cep: (paciente.cep || '').replace(/\D/g, ''),
+        };
+      }
+    }
+
     // Montar payload no formato da Focus NFe
     const nfsePayload = {
       data_emissao: new Date(faturamento.data || Date.now()).toISOString(),
@@ -500,6 +519,7 @@ exports.emitirNotaFiscal = async (req, res) => {
         ...(isPJ ? { cnpj: cnpjTomador } : { cpf: cpfTomador }),
         razao_social: nomeTomador,
         ...(paciente?.email || faturamento.email ? { email: paciente?.email || faturamento.email } : {}),
+        ...(tomadorEndereco ? { endereco: tomadorEndereco } : {}),
       },
       servico: {
         valor_servicos: parseFloat(faturamento.valor),

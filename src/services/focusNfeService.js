@@ -124,4 +124,36 @@ async function cancelarNfse(clinicaToken, ref, justificativa) {
   return data;
 }
 
-module.exports = { cadastrarEmpresa, definirProximoNumeroRps, emitirNfse, consultarNfse, aguardarAutorizacaoNfse, cancelarNfse };
+// Cache em memória (dura o processo) — evita bater na API do IBGE de novo pra
+// cada nota quando várias notas seguidas são da mesma cidade (o comum).
+const _cacheIbge = new Map();
+
+/**
+ * Resolve o código IBGE (7 dígitos) de uma cidade a partir do nome + UF,
+ * usando a API pública do IBGE. Usado pra preencher o endereço do tomador
+ * na nota — sem isso o endereço fica sem o codigo_municipio obrigatório.
+ * Devolve null se não achar (endereço do tomador então é omitido).
+ */
+async function buscarCodigoMunicipioIbge(cidade, uf) {
+  if (!cidade || !uf) return null;
+  const chave = `${cidade.trim().toLowerCase()}|${uf.trim().toUpperCase()}`;
+  if (_cacheIbge.has(chave)) return _cacheIbge.get(chave);
+
+  try {
+    const { data } = await axios.get(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`);
+    const normalizar = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+    const alvo = normalizar(cidade);
+    const encontrado = data.find((m) => normalizar(m.nome) === alvo);
+    const codigo = encontrado ? String(encontrado.id) : null;
+    _cacheIbge.set(chave, codigo);
+    return codigo;
+  } catch (err) {
+    console.error('[focusNfeService] Erro ao buscar código IBGE:', err.message);
+    return null;
+  }
+}
+
+module.exports = {
+  cadastrarEmpresa, definirProximoNumeroRps, emitirNfse, consultarNfse,
+  aguardarAutorizacaoNfse, cancelarNfse, buscarCodigoMunicipioIbge,
+};
