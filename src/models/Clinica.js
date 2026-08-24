@@ -113,14 +113,16 @@ const Clinica = sequelize.define('Clinica', {
     comment: 'Estado (UF)'
   },
   logo: {
-    type: DataTypes.STRING(500),
+    // LONGTEXT porque na prática isso guarda a imagem inteira em base64 (data
+    // URI), não uma URL curta — um VARCHAR truncava a imagem silenciosamente.
+    type: DataTypes.TEXT('long'),
     allowNull: true,
-    comment: 'URL ou caminho da logo da clínica'
+    comment: 'Logo da clínica em base64 (data URI)'
   },
   assinatura: {
-    type: DataTypes.STRING(1000),
+    type: DataTypes.TEXT('long'),
     allowNull: true,
-    comment: 'URL ou caminho da assinatura digitalizada do dentista'
+    comment: 'Assinatura digitalizada do dentista em base64 (data URI)'
   },
   site: {
     type: DataTypes.STRING(255),
