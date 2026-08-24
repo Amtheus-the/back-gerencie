@@ -15,7 +15,13 @@ router.use(verificarToken);
 // Resumo financeiro do paciente é usado dentro da Ficha do Paciente — libera
 // pra quem tem acesso a "pacientes" também, não só a quem tem "faturamento".
 router.get('/paciente/:pacienteId/resumo', (req, res, next) => {
-  const temAcesso = req.user?.role === 'dentista' || req.user?.permissoes?.pacientes || req.user?.permissoes?.faturamento;
+  // Alguns registros antigos guardam permissoes como string JSON serializada
+  // duas vezes — sem isso, esses usuários ficam bloqueados mesmo com acesso liberado.
+  let permissoes = req.user?.permissoes;
+  if (typeof permissoes === 'string') {
+    try { permissoes = JSON.parse(permissoes); } catch { permissoes = null; }
+  }
+  const temAcesso = req.user?.role === 'dentista' || permissoes?.pacientes || permissoes?.faturamento;
   if (!temAcesso) return res.status(403).json({ success: false, message: 'Você não tem permissão para acessar este módulo.' });
   next();
 }, faturamentoController.resumoFinanceiroPaciente);

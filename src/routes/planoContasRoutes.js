@@ -14,7 +14,13 @@ router.use(verificarToken);
 // Leitura também é usada pela tela de Despesas (categorias) — libera pra
 // quem tem "despesas" OU "planoContas", não só quem tem "planoContas".
 const acessoLeitura = (req, res, next) => {
-  const temAcesso = req.user?.role === 'dentista' || req.user?.permissoes?.despesas || req.user?.permissoes?.planoContas;
+  // Alguns registros antigos guardam permissoes como string JSON serializada
+  // duas vezes — sem isso, esses usuários ficam bloqueados mesmo com acesso liberado.
+  let permissoes = req.user?.permissoes;
+  if (typeof permissoes === 'string') {
+    try { permissoes = JSON.parse(permissoes); } catch { permissoes = null; }
+  }
+  const temAcesso = req.user?.role === 'dentista' || permissoes?.despesas || permissoes?.planoContas;
   if (!temAcesso) return res.status(403).json({ success: false, message: 'Você não tem permissão para acessar este módulo.' });
   next();
 };

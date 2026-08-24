@@ -7,7 +7,15 @@
  * pular a interface e chamar a API direto ignorando qualquer restrição.
  */
 const verificarPermissaoModulo = (modulo) => (req, res, next) => {
-  if (req.user?.role !== 'dentista' && !req.user?.permissoes?.[modulo]) {
+  // Em alguns registros mais antigos, permissoes foi salvo como string JSON
+  // duplamente serializada (bug de gravação já contornado em outros pontos
+  // do código, ex: secretariaController.listar) — sem isso aqui, esses
+  // usuários ficam bloqueados de TODOS os módulos mesmo com acesso liberado.
+  let permissoes = req.user?.permissoes;
+  if (typeof permissoes === 'string') {
+    try { permissoes = JSON.parse(permissoes); } catch { permissoes = null; }
+  }
+  if (req.user?.role !== 'dentista' && !permissoes?.[modulo]) {
     return res.status(403).json({
       success: false,
       message: 'Você não tem permissão para acessar este módulo.',
