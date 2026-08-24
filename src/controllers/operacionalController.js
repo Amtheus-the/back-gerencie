@@ -610,9 +610,13 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
     // Quando há pagador diferente do beneficiário, a nota tem que sair no
     // nome do pagador, não do paciente que recebeu o serviço.
     const pagadorDiferente = !!(faturamento.pagadorNome && faturamento.pagadorNome.trim());
-    const isPJ = pagadorDiferente ? faturamento.pagadorTipoPessoa === 'PJ' : faturamento.tipoPessoa === 'PJ';
     const nomeTomador = pagadorDiferente ? faturamento.pagadorNome : (paciente?.nome || faturamento.paciente || '');
     const documentoTomador = ((pagadorDiferente ? faturamento.pagadorCpf : (paciente?.cpfCnpj || faturamento.cpf)) || '').replace(/\D/g, '');
+    // isPJ vem do tamanho do documento, não de faturamento.tipoPessoa — esse campo
+    // reflete o regime da CLÍNICA (forçado em clínicas não-híbridas), não o tipo
+    // de documento do tomador. Um paciente PF numa clínica PJ tem CPF de 11
+    // dígitos mesmo assim, e mandar isso no campo cnpj (14 dígitos) quebra a Ginfes.
+    const isPJ = documentoTomador.length === 14;
     const cnpjClinica = (clinica.cnpj || '').replace(/\D/g, '');
 
     // Valida CPF/CNPJ do tomador antes de enviar
