@@ -8,6 +8,7 @@ const { sequelize } = require('../config/database');
 const Clinica = require('./Clinica');
 const User = require('./User');
 const Despesa = require('./Despesa');
+const DespesaRecorrente = require('./DespesaRecorrente');
 const Faturamento = require('./Faturamento');
 const Analise = require('./Analise');
 const Paciente = require('./Paciente');
@@ -84,6 +85,29 @@ Clinica.hasMany(Despesa, {
 Despesa.belongsTo(Clinica, {
   foreignKey: 'clinicaId',
   as: 'clinica'
+});
+
+// Uma despesa recorrente gera muitas despesas mensais
+DespesaRecorrente.hasMany(Despesa, {
+  foreignKey: 'recorrenciaId',
+  as: 'despesasGeradas',
+});
+Despesa.belongsTo(DespesaRecorrente, {
+  foreignKey: 'recorrenciaId',
+  as: 'recorrencia',
+});
+Clinica.hasMany(DespesaRecorrente, {
+  foreignKey: 'clinicaId',
+  as: 'despesasRecorrentes',
+  onDelete: 'CASCADE'
+});
+DespesaRecorrente.belongsTo(Clinica, {
+  foreignKey: 'clinicaId',
+  as: 'clinica'
+});
+DespesaRecorrente.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'usuario'
 });
 
 // Uma clínica tem muitos documentos
@@ -313,6 +337,7 @@ module.exports = {
   Clinica,
   User,
   Despesa,
+  DespesaRecorrente,
   Faturamento,
   Analise,
   Paciente,

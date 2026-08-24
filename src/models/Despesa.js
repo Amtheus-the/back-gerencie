@@ -78,6 +78,15 @@ const Despesa = sequelize.define('Despesa', {
     },
     comment: 'Referência ao plano de contas'
   },
+  recorrenciaId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'despesas_recorrentes',
+      key: 'id'
+    },
+    comment: 'Preenchido quando a despesa foi gerada automaticamente por uma despesa fixa recorrente'
+  },
   userId: {
     type: DataTypes.UUID,
     allowNull: false,

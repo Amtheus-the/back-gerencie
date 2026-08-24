@@ -17,6 +17,7 @@ const { connectDB } = require('./config/database');
 const asaasRoutes = require('./routes/asaas');
 const authRoutes = require('./routes/authRoutes');
 const despesasRoutes = require('./routes/despesasRoutes');
+const despesaRecorrenteRoutes = require('./routes/despesaRecorrenteRoutes');
 const maquinasCartaoRoutes = require('./routes/maquinasCartaoRoutes');
 const faturamentoRoutes = require('./routes/faturamentoRoutes');
 const analiseRoutes = require('./routes/analiseRoutes');
@@ -110,6 +111,7 @@ app.use((req, res, next) => {
 // Rotas
 app.use('/api/auth', authRoutes);
 app.use('/api/despesas', despesasRoutes);
+app.use('/api/despesas-recorrentes', despesaRecorrenteRoutes);
 app.use('/api/maquinas-cartao', maquinasCartaoRoutes);
 app.use('/api/faturamento', faturamentoRoutes);
 app.use('/api/analise', analiseRoutes);

@@ -5,6 +5,7 @@
 
 const { Despesa } = require('../models');
 const { Op } = require('sequelize');
+const { gerarPendentesDaClinica } = require('../services/despesaRecorrenteService');
 
 /**
  * Lista todas as despesas da clínica
@@ -12,6 +13,11 @@ const { Op } = require('sequelize');
 exports.listarDespesas = async (req, res) => {
   try {
     const { dataInicio, dataFim, categoria } = req.query;
+
+    // Gera qualquer ocorrência de despesa fixa recorrente que ainda esteja
+    // pendente (mês atual ou meses perdidos desde a última vez que alguém
+    // abriu a tela) antes de listar.
+    await gerarPendentesDaClinica(req.user.clinicaId);
 
     // Filtra por clínica — dentista e secretaria veem as mesmas despesas
     const where = { clinicaId: req.user.clinicaId };
