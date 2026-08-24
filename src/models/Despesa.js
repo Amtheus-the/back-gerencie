@@ -24,16 +24,11 @@ const Despesa = sequelize.define('Despesa', {
     }
   },
   categoria: {
-    type: DataTypes.ENUM(
-      'Aluguel',
-      'Equipamentos',
-      'Materiais',
-      'Salários',
-      'Impostos',
-      'Marketing',
-      'Manutenção',
-      'Outros'
-    ),
+    // Era ENUM fixo, mas o Plano de Contas permite categorias personalizadas
+    // com qualquer nome — um ENUM travado nos 8 valores antigos fazia o MySQL
+    // (fora do modo estrito) aceitar e gravar em branco qualquer nome fora
+    // da lista, apagando a categoria silenciosamente.
+    type: DataTypes.STRING,
     allowNull: false
   },
   data: {
