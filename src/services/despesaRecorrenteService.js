@@ -1,12 +1,13 @@
 /**
  * Geração das despesas mensais a partir das despesas fixas recorrentes.
  *
- * Não usa cron — é gerado sob demanda (lazy) sempre que a lista de despesas
- * é aberta: percorre as recorrências ativas da clínica e cria qualquer mês
- * que ainda não tenha sido gerado, até o mês atual. Isso também
- * "recupera" meses perdidos caso o usuário fique um tempo sem abrir o
- * sistema — não depende do servidor estar de pé numa data exata.
+ * Ao cadastrar uma recorrência, o cronograma inteiro já é gerado de uma vez
+ * (inclusive meses futuros) — assim o usuário já vê e planeja as despesas
+ * previstas, não só as que já venceram. duracaoMeses sempre tem um valor
+ * (padrão 12 quando não informado pelo usuário), então dá pra gerar tudo
+ * de uma vez sem depender de um cron.
  */
+const { Op } = require('sequelize');
 const { Despesa, DespesaRecorrente } = require('../models');
 
 function ultimoDiaDoMes(ano, mesIndex) {
@@ -18,24 +19,19 @@ function formatarData(ano, mesIndex, dia) {
 }
 
 /**
- * Gera as ocorrências pendentes de UMA recorrência específica, até o mês
- * atual (ou até o fim da duração, o que vier primeiro). Devolve as
- * despesas recém-criadas.
+ * Gera todas as ocorrências de uma recorrência, do início até completar
+ * duracaoMeses — não pula meses futuros. Idempotente: não duplica se uma
+ * ocorrência já existe. Devolve as despesas recém-criadas.
  */
 async function gerarOcorrenciasPendentes(recorrencia) {
-  const hoje = new Date();
   const inicio = new Date(recorrencia.dataInicio + 'T00:00:00');
   let cursorAno = inicio.getFullYear();
   let cursorMes = inicio.getMonth();
-  const limiteAno = hoje.getFullYear();
-  const limiteMes = hoje.getMonth();
 
   const criadas = [];
-  let mesesGerados = 0;
+  const totalMeses = recorrencia.duracaoMeses || 12;
 
-  while (cursorAno < limiteAno || (cursorAno === limiteAno && cursorMes <= limiteMes)) {
-    if (recorrencia.duracaoMeses != null && mesesGerados >= recorrencia.duracaoMeses) break;
-
+  for (let i = 0; i < totalMeses; i++) {
     const dia = Math.min(recorrencia.diaVencimento, ultimoDiaDoMes(cursorAno, cursorMes));
     const dataOcorrencia = formatarData(cursorAno, cursorMes, dia);
 
@@ -59,14 +55,8 @@ async function gerarOcorrenciasPendentes(recorrencia) {
       criadas.push(nova);
     }
 
-    mesesGerados++;
     cursorMes++;
     if (cursorMes > 11) { cursorMes = 0; cursorAno++; }
-  }
-
-  // Duração esgotada — encerra a recorrência automaticamente (não gera mais)
-  if (recorrencia.duracaoMeses != null && mesesGerados >= recorrencia.duracaoMeses && recorrencia.ativa) {
-    await recorrencia.update({ ativa: false, canceladaEm: new Date() });
   }
 
   return criadas;
@@ -74,7 +64,8 @@ async function gerarOcorrenciasPendentes(recorrencia) {
 
 /**
  * Gera as ocorrências pendentes de todas as recorrências ativas de uma
- * clínica. Chamado sempre que a lista de despesas é carregada.
+ * clínica — serve como rede de segurança (ex: uma ocorrência foi apagada
+ * sem querer), já que a geração principal acontece toda no cadastro.
  */
 async function gerarPendentesDaClinica(clinicaId) {
   const recorrencias = await DespesaRecorrente.findAll({ where: { clinicaId, ativa: true } });
@@ -83,4 +74,17 @@ async function gerarPendentesDaClinica(clinicaId) {
   }
 }
 
-module.exports = { gerarOcorrenciasPendentes, gerarPendentesDaClinica };
+/**
+ * Cancela uma recorrência: remove as ocorrências que ainda não venceram
+ * (futuras), preservando as que já passaram — cancelar não deve apagar o
+ * que já efetivamente aconteceu.
+ */
+async function cancelarRecorrencia(recorrencia) {
+  const hoje = new Date().toISOString().slice(0, 10);
+  await Despesa.destroy({
+    where: { recorrenciaId: recorrencia.id, data: { [Op.gt]: hoje } },
+  });
+  await recorrencia.update({ ativa: false, canceladaEm: new Date() });
+}
+
+module.exports = { gerarOcorrenciasPendentes, gerarPendentesDaClinica, cancelarRecorrencia };

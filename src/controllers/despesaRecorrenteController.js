@@ -3,7 +3,7 @@
  * automaticamente todo mês)
  */
 const { DespesaRecorrente } = require('../models');
-const { gerarOcorrenciasPendentes } = require('../services/despesaRecorrenteService');
+const { gerarOcorrenciasPendentes, cancelarRecorrencia } = require('../services/despesaRecorrenteService');
 
 /**
  * Lista as recorrências da clínica
@@ -46,7 +46,8 @@ exports.criar = async (req, res) => {
       planoContaId: planoContaId || null,
       diaVencimento,
       dataInicio,
-      duracaoMeses: duracaoMeses || null,
+      // Sem duração definida = repete por até 12 meses (não é mais "pra sempre")
+      duracaoMeses: duracaoMeses || 12,
       observacoes,
     });
 
@@ -65,8 +66,8 @@ exports.criar = async (req, res) => {
 };
 
 /**
- * Cancela uma recorrência — para de gerar despesas novas, mas as já
- * geradas continuam intactas.
+ * Cancela uma recorrência — remove as ocorrências futuras (ainda não
+ * vencidas), mas as que já venceram/já aconteceram continuam intactas.
  */
 exports.cancelar = async (req, res) => {
   try {
@@ -77,8 +78,8 @@ exports.cancelar = async (req, res) => {
     if (!recorrencia) {
       return res.status(404).json({ success: false, message: 'Despesa recorrente não encontrada' });
     }
-    await recorrencia.update({ ativa: false, canceladaEm: new Date() });
-    res.json({ success: true, message: 'Recorrência cancelada — despesas já lançadas continuam normalmente' });
+    await cancelarRecorrencia(recorrencia);
+    res.json({ success: true, message: 'Recorrência cancelada — as ocorrências futuras foram removidas, as já vencidas continuam normalmente' });
   } catch (error) {
     console.error('Erro ao cancelar despesa recorrente:', error);
     res.status(500).json({ success: false, message: 'Erro ao cancelar despesa recorrente' });
