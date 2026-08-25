@@ -5,6 +5,22 @@ const { verificarToken } = require('../middleware/authMiddleware');
 
 router.use(verificarToken);
 
+// procedimentos/valores podem voltar como string (driver não decodifica JSON
+// automaticamente quando a coluna não é nativamente JSON) — normaliza sempre.
+function parseJsonSeNecessario(valor, fallback) {
+  if (typeof valor !== 'string') return valor ?? fallback;
+  try { return JSON.parse(valor); } catch { return fallback; }
+}
+
+function normalizarOrcamento(orcamento) {
+  const json = orcamento.toJSON ? orcamento.toJSON() : orcamento;
+  return {
+    ...json,
+    procedimentos: parseJsonSeNecessario(json.procedimentos, []),
+    valores: parseJsonSeNecessario(json.valores, {}),
+  };
+}
+
 // Soma os valores negociados no orçamento (campo JSON { procedimentoId: valor })
 function calcularValorTotal(orcamento) {
   const valores = orcamento.valores || {};
@@ -13,7 +29,7 @@ function calcularValorTotal(orcamento) {
 
 // Anexa valorTotal / valorPago / saldoAberto a um orçamento, somando os faturamentos vinculados
 async function comSaldo(orcamento) {
-  const json = orcamento.toJSON ? orcamento.toJSON() : orcamento;
+  const json = normalizarOrcamento(orcamento);
   const valorTotal = calcularValorTotal(json);
   const faturamentos = await Faturamento.findAll({
     where: { orcamentoId: json.id },
@@ -30,7 +46,7 @@ async function comSaldo(orcamento) {
   };
 }
 
-// Criar orçamento
+// Criar (ou atualizar, se já existir um orçamento pra esse agendamento) orçamento
 router.post('/', async (req, res) => {
   try {
     console.log('[ORCAMENTO] Dados recebidos:', req.body);
@@ -45,17 +61,29 @@ router.post('/', async (req, res) => {
     if (!clinica_id) {
       return res.status(400).json({ error: 'Não foi possível determinar a clínica do orçamento.' });
     }
-    const orcamento = await Orcamento.create({
-      agendamento_id,
-      paciente_id,
-      clinica_id,
-      status,
-      procedimentos,
-      valores,
-      observacoes
-    });
-    console.log('[ORCAMENTO] Inserido com sucesso:', orcamento?.toJSON ? orcamento.toJSON() : orcamento);
-    res.status(201).json(orcamento);
+
+    // Já existe um orçamento pra esse agendamento? Atualiza em vez de criar
+    // outro — sem isso, cada "Salvar" gerava uma linha nova e a tela podia
+    // reabrir mostrando uma versão antiga/vazia por acaso.
+    let orcamento = agendamento_id
+      ? await Orcamento.findOne({ where: { agendamento_id } })
+      : null;
+
+    if (orcamento) {
+      await orcamento.update({ status, procedimentos, valores, observacoes });
+    } else {
+      orcamento = await Orcamento.create({
+        agendamento_id,
+        paciente_id,
+        clinica_id,
+        status,
+        procedimentos,
+        valores,
+        observacoes
+      });
+    }
+    console.log('[ORCAMENTO] Salvo com sucesso:', orcamento?.toJSON ? orcamento.toJSON() : orcamento);
+    res.status(201).json(normalizarOrcamento(orcamento));
   } catch (err) {
     console.error('[ORCAMENTO] Erro ao inserir:', err);
     res.status(500).json({ error: err.message });
@@ -66,7 +94,7 @@ router.post('/', async (req, res) => {
 router.get('/agendamento/:agendamento_id', async (req, res) => {
   try {
     const { agendamento_id } = req.params;
-    const orcamento = await Orcamento.findOne({ where: { agendamento_id } });
+    const orcamento = await Orcamento.findOne({ where: { agendamento_id }, order: [['createdAt', 'DESC']] });
     if (!orcamento) return res.status(404).json({ error: 'Orçamento não encontrado' });
     res.json(await comSaldo(orcamento));
   } catch (err) {
@@ -123,7 +151,7 @@ router.put('/:id', async (req, res) => {
     if (!orcamento) return res.status(404).json({ error: 'Orçamento não encontrado' });
     orcamento.status = status;
     await orcamento.save();
-    res.json(orcamento);
+    res.json(normalizarOrcamento(orcamento));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
