@@ -68,8 +68,12 @@ exports.criarDespesa = async (req, res) => {
     let planoContaIdFinal = plano_conta_id;
     if (!planoContaIdFinal) {
       const { PlanoContas } = require('../models');
+      // Plano de contas é dono do dentista — se for a secretaria lançando,
+      // tem que buscar o "Outras despesas" do dentista que a criou, não o
+      // dela (que nem tem plano de contas próprio).
+      const donoDoPlano = req.user.role === 'secretaria' ? req.user.criadoPorId : userId;
       const planoPadrao = await PlanoContas.findOne({
-        where: { userId, nome: 'Outras despesas' }
+        where: { userId: donoDoPlano, nome: 'Outras despesas' }
       });
       planoContaIdFinal = planoPadrao ? planoPadrao.id : null;
     }

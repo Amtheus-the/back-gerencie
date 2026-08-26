@@ -64,7 +64,7 @@ class PlanoContasController {
   // Criar nova conta
   async criar(req, res) {
     try {
-      const userId = req.user.id;
+      const userId = userIdFiltro(req);
       const dadosConta = { ...req.body, userId };
 
       const conta = await PlanoContas.create(dadosConta);
@@ -83,7 +83,7 @@ class PlanoContasController {
   async atualizar(req, res) {
     try {
       const { id } = req.params;
-      const userId = req.user.id;
+      const userId = userIdFiltro(req);
 
       const conta = await PlanoContas.findOne({
         where: { id, userId }
@@ -109,7 +109,7 @@ class PlanoContasController {
   async deletar(req, res) {
     try {
       const { id } = req.params;
-      const userId = req.user.id;
+      const userId = userIdFiltro(req);
 
       const conta = await PlanoContas.findOne({
         where: { id, userId }
@@ -134,7 +134,7 @@ class PlanoContasController {
   // Buscar contas (para autocomplete)
   async buscar(req, res) {
     try {
-      const userId = req.user.id;
+      const userId = userIdFiltro(req);
       const { termo, tipo, dedutivel } = req.query;
 
       const where = { userId, ativo: true };
