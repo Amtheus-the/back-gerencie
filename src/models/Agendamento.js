@@ -21,7 +21,13 @@ const Agendamento = sequelize.define('Agendamento', {
   },
   procedimento_id: {
     type: DataTypes.UUID,
-    allowNull: false
+    allowNull: false,
+    comment: 'Primeiro procedimento da lista — mantido por compatibilidade (título do evento, etc). A lista completa fica em "procedimentos".'
+  },
+  procedimentos: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Lista completa de IDs de procedimentos do agendamento, quando mais de um foi escolhido'
   },
   data_hora: {
     type: DataTypes.DATE,

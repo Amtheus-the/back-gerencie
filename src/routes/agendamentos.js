@@ -7,6 +7,19 @@ const googleCalendarService = require('../services/googleCalendarService');
 
 router.use(verificarToken);
 
+// procedimentos pode voltar como string (o driver não decodifica JSON
+// automaticamente quando a coluna não é nativamente JSON) — normaliza sempre.
+function parseProcedimentos(valor) {
+  if (Array.isArray(valor)) return valor;
+  if (typeof valor !== 'string') return [];
+  try {
+    const parsed = JSON.parse(valor);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Retorna o bloqueio de agenda que conflita com o horário informado, se houver. */
 async function encontrarBloqueioConflitante(userId, dataHoraInicio, duracaoMinutos) {
   if (!userId || !dataHoraInicio) return null;
@@ -89,7 +102,11 @@ router.get('/', async (req, res) => {
         }
       ]
     });
-    res.json(agendamentos);
+    const normalizados = agendamentos.map(a => {
+      const json = a.toJSON();
+      return { ...json, procedimentos: parseProcedimentos(json.procedimentos) };
+    });
+    res.json(normalizados);
   } catch (err) {
     console.error('[AGENDAMENTOS] Erro:', err);
     res.status(500).json({ error: err.message });
@@ -103,6 +120,7 @@ router.post('/', async (req, res) => {
     user_id,
     paciente_id,
     procedimento_id,
+    procedimentos,
     data_hora,
     duracao_minutos,
     status,
@@ -117,11 +135,16 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // procedimento_id continua sendo o primeiro da lista — usado no título do
+    // evento e por qualquer código antigo que só conhece um único procedimento.
+    const listaProcedimentos = Array.isArray(procedimentos) && procedimentos.length ? procedimentos : (procedimento_id ? [procedimento_id] : []);
+
     const novoAgendamento = await Agendamento.create({
       clinica_id,
       user_id,
       paciente_id,
-      procedimento_id,
+      procedimento_id: listaProcedimentos[0] || procedimento_id,
+      procedimentos: listaProcedimentos,
       data_hora,
       duracao_minutos,
       status,
@@ -186,7 +209,7 @@ router.post('/', async (req, res) => {
       console.warn('⚠️ [WhatsApp] Paciente sem telefone — id:', paciente_id, '| telefone:', paciente?.telefone);
     }
 
-    res.status(201).json(novoAgendamento);
+    res.status(201).json({ ...novoAgendamento.toJSON(), procedimentos: parseProcedimentos(novoAgendamento.procedimentos) });
 
     // Sincroniza com o Google Calendar do dentista (assíncrono, não bloqueia a resposta)
     sincronizarComGoogle(novoAgendamento);
@@ -201,7 +224,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { data_hora, status, duracao_minutos, observacoes, lancamento_feito, paciente_id, procedimento_id, user_id } = req.body;
+    const { data_hora, status, duracao_minutos, observacoes, lancamento_feito, paciente_id, procedimento_id, procedimentos, user_id } = req.body;
     const agendamento = await Agendamento.findOne({ where: { id, clinica_id: req.user.clinicaId } });
     if (!agendamento) return res.status(404).json({ message: 'Agendamento não encontrado' });
 
@@ -225,10 +248,16 @@ router.put('/:id', async (req, res) => {
     if (observacoes !== undefined) agendamento.observacoes = observacoes;
     if (lancamento_feito !== undefined) agendamento.lancamento_feito = lancamento_feito;
     if (paciente_id !== undefined) agendamento.paciente_id = paciente_id;
-    if (procedimento_id !== undefined) agendamento.procedimento_id = procedimento_id;
+    if (Array.isArray(procedimentos) && procedimentos.length) {
+      agendamento.procedimentos = procedimentos;
+      agendamento.procedimento_id = procedimentos[0];
+    } else if (procedimento_id !== undefined) {
+      agendamento.procedimento_id = procedimento_id;
+      agendamento.procedimentos = [procedimento_id];
+    }
     if (user_id !== undefined) agendamento.user_id = user_id;
     await agendamento.save();
-    res.json(agendamento);
+    res.json({ ...agendamento.toJSON(), procedimentos: parseProcedimentos(agendamento.procedimentos) });
 
     // Sincroniza com o Google Calendar do dentista (assíncrono, não bloqueia a resposta)
     sincronizarComGoogle(agendamento);

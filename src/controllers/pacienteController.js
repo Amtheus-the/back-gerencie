@@ -25,16 +25,40 @@ class PacienteController {
         order: [['data_hora', 'DESC']]
       });
 
+      // "procedimentos" pode vir string (driver não decodifica JSON
+      // automaticamente) — normaliza, com fallback pro procedimento_id
+      // único de agendamentos antigos, criados antes de suportar vários.
+      const idsDoAgendamento = (a) => {
+        let lista = a.procedimentos;
+        if (typeof lista === 'string') {
+          try { lista = JSON.parse(lista); } catch { lista = null; }
+        }
+        if (Array.isArray(lista) && lista.length) return lista;
+        return a.procedimento_id ? [a.procedimento_id] : [];
+      };
+
+      // Busca de uma vez só o nome de todos os procedimentos envolvidos
+      const todosIds = new Set();
+      agendamentos.forEach(a => idsDoAgendamento(a).forEach(pid => todosIds.add(pid)));
+      const procedimentosExtras = await Procedimento.findAll({
+        where: { id: [...todosIds] },
+        attributes: ['id', 'nome']
+      });
+      const nomePorId = Object.fromEntries(procedimentosExtras.map(p => [p.id, p.nome]));
+
       // Mapeia para um formato mais amigável
-      const historico = agendamentos.map(a => ({
-        id: a.id,
-        data: a.data_hora,
-        procedimento: a.procedimento?.nome || '',
-        descricao: a.procedimento?.descricao || '',
-        valor: a.procedimento?.valorPadrao || '',
-        status: a.status,
-        observacoes: a.observacoes
-      }));
+      const historico = agendamentos.map(a => {
+        const nomes = idsDoAgendamento(a).map(pid => nomePorId[pid]).filter(Boolean);
+        return {
+          id: a.id,
+          data: a.data_hora,
+          procedimento: nomes.length ? nomes.join(', ') : (a.procedimento?.nome || ''),
+          descricao: a.procedimento?.descricao || '',
+          valor: a.procedimento?.valorPadrao || '',
+          status: a.status,
+          observacoes: a.observacoes
+        };
+      });
 
       return res.json(historico);
     } catch (error) {
