@@ -286,6 +286,32 @@ router.post('/assinar/:token', async (req, res) => {
   }
 });
 
+/**
+ * Confirma diretamente com a API da Autentique (fonte da verdade) se um documento
+ * já tem assinatura real do paciente, em vez de confiar no corpo do webhook —
+ * que chega sem nenhuma verificação de assinatura/segredo e pode ser forjado
+ * por qualquer requisição externa à nossa rota pública.
+ */
+async function confirmarAssinaturaNaAutentique(autentiqueId) {
+  const axios = require('axios');
+  const AUTENTIQUE_URL = 'https://api.autentique.com.br/v2/graphql';
+  const query = `
+    query ($id: UUID!) {
+      document(id: $id) {
+        signatures { name signed { created_at } }
+      }
+    }
+  `;
+  const resp = await axios.post(AUTENTIQUE_URL,
+    { query, variables: { id: autentiqueId } },
+    { headers: { Authorization: `Bearer ${process.env.AUTENTIQUE_TOKEN}`, 'Content-Type': 'application/json' } }
+  );
+  if (resp.data.errors) throw new Error(resp.data.errors[0].message);
+  const signatures = resp.data.data?.document?.signatures || [];
+  // Ignora o slot do dono da conta (name: null) — ele nunca assina.
+  return signatures.find(s => s.name && s.signed?.created_at) || null;
+}
+
 // Webhook Autentique — atualiza status quando documento é finalizado
 router.post('/webhook-autentique', async (req, res) => {
   try {
@@ -297,19 +323,21 @@ router.post('/webhook-autentique', async (req, res) => {
     console.log('[Autentique Webhook] body completo:', JSON.stringify(body, null, 2));
 
     if ((event === 'document.finished' || event === 'signature_accepted') && document?.id) {
-      const sigPaciente = document.signatures?.find(s => s.name && (s.signed?.created_at || s.signed?.at));
+      // Não confia no payload do webhook em si (sem verificação de assinatura/segredo) —
+      // confirma a assinatura consultando a própria API da Autentique antes de gravar.
+      const sigPaciente = await confirmarAssinaturaNaAutentique(document.id);
       if (sigPaciente) {
         await DocumentoPaciente.update(
           {
             status: 'assinado',
             nomeAssinante: sigPaciente.name,
-            assinadoEm: sigPaciente.signed?.created_at ? new Date(sigPaciente.signed.created_at) : new Date(),
+            assinadoEm: new Date(sigPaciente.signed.created_at),
           },
           { where: { autentiqueId: document.id } }
         );
-        console.log('[Autentique Webhook] ✅ Status atualizado para assinado | doc:', document.id);
+        console.log('[Autentique Webhook] ✅ Status atualizado para assinado (confirmado via API) | doc:', document.id);
       } else {
-        console.log('[Autentique Webhook] ⚠️ Evento recebido sem assinatura confirmada do paciente, ignorando | doc:', document.id);
+        console.log('[Autentique Webhook] ⚠️ API da Autentique não confirma assinatura real, ignorando | doc:', document.id);
       }
     }
 
