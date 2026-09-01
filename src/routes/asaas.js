@@ -96,13 +96,7 @@ router.post('/criar-assinatura', async (req, res) => {
     if (!clinica) return res.status(404).json({ error: 'Clínica não encontrada' });
 
     const customerId = await garantirCliente(clinica);
-
-    // Se já tem assinatura ativa, cancela antes de criar nova
-    if (clinica.asaasSubscriptionId) {
-      try {
-        await axios.delete(`${ASAAS_API_URL}/subscriptions/${clinica.asaasSubscriptionId}`, { headers: asaasHeaders });
-      } catch (_) { /* ignora se já cancelada */ }
-    }
+    const assinaturaAntigaId = clinica.asaasSubscriptionId;
 
     const hoje = new Date().toISOString().slice(0, 10);
 
@@ -130,6 +124,9 @@ router.post('/criar-assinatura', async (req, res) => {
       payload.remoteIp = remoteIp || '127.0.0.1';
     }
 
+    // Cria a assinatura nova PRIMEIRO — só depois de confirmada é que a antiga
+    // é cancelada. Isso evita que uma falha na criação (ex: cartão inválido)
+    // deixe o cliente sem nenhuma assinatura ativa, caso já exista uma sendo substituída.
     const response = await axios.post(`${ASAAS_API_URL}/subscriptions`, payload, { headers: asaasHeaders });
     const subscription = response.data;
 
@@ -140,6 +137,13 @@ router.post('/criar-assinatura', async (req, res) => {
       dataAssinatura: new Date(),
       dataVencimento: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     });
+
+    // Só agora cancela a assinatura antiga (se havia uma) — a nova já está confirmada.
+    if (assinaturaAntigaId && assinaturaAntigaId !== subscription.id) {
+      try {
+        await axios.delete(`${ASAAS_API_URL}/subscriptions/${assinaturaAntigaId}`, { headers: asaasHeaders });
+      } catch (_) { /* ignora se já cancelada */ }
+    }
 
     // Para PIX, busca o QR code da primeira cobrança gerada
     if (billingType === 'PIX') {
