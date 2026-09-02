@@ -187,6 +187,20 @@ const Clinica = sequelize.define('Clinica', {
     defaultValue: true,
     comment: 'Indica se a clínica está ativa'
   },
+  atendeOdontologia: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+    field: 'atende_odontologia',
+    comment: 'Se a clínica atende odontologia — controla a exibição do Odontograma na ficha do paciente'
+  },
+  atendeEstetica: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    field: 'atende_estetica',
+    comment: 'Se a clínica atende estética — controla a exibição do Mapa Estético na ficha do paciente'
+  },
   motivoInativo: {
     type: DataTypes.TEXT,
     allowNull: true,

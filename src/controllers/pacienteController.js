@@ -274,6 +274,41 @@ class PacienteController {
     }
   }
 
+  async buscarEstetica(req, res) {
+    try {
+      const { id } = req.params;
+      const clinicaId = req.user.clinicaId;
+      const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId }, attributes: ['id', 'esteticaData'] });
+      if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+      let dados = paciente.esteticaData;
+      if (typeof dados === 'string') { try { dados = JSON.parse(dados); } catch { dados = {}; } }
+      res.json({ dados: dados || {} });
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao buscar mapa estético', detail: error.message });
+    }
+  }
+
+  async salvarEstetica(req, res) {
+    try {
+      const { id } = req.params;
+      const { regiao, status, procedimento, obs } = req.body;
+      const clinicaId = req.user.clinicaId;
+      const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId } });
+      if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+      let dados = paciente.esteticaData || {};
+      if (typeof dados === 'string') { try { dados = JSON.parse(dados); } catch { dados = {}; } }
+      if (status === null) {
+        delete dados[regiao];
+      } else {
+        dados[regiao] = { status, procedimento: procedimento || '', obs: obs || '', atualizadoEm: new Date().toISOString() };
+      }
+      await paciente.update({ esteticaData: dados });
+      res.json({ success: true, dados });
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao salvar mapa estético', detail: error.message });
+    }
+  }
+
   // Histórico de anotações/observações do paciente (uma por consulta, não sobrescreve)
   async listarAnotacoes(req, res) {
     try {

@@ -85,6 +85,12 @@ const Paciente = sequelize.define('Paciente', {
     field: 'odontograma_data',
     comment: 'Status dos dentes { "18": { status, procedimento, obs }, ... }'
   },
+  esteticaData: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    field: 'estetica_data',
+    comment: 'Status das regiões faciais/corporais { "testa": { status, procedimento, obs }, ... }'
+  },
   anamneseData: {
     type: DataTypes.JSON,
     allowNull: true,

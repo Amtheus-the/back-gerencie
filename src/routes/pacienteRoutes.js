@@ -51,6 +51,10 @@ router.get('/:id/historico', pacienteController.historicoProcedimentos);
 router.get('/:id/odontograma', pacienteController.buscarOdontograma);
 router.patch('/:id/odontograma', pacienteController.salvarOdontograma);
 
+// Mapa Estético
+router.get('/:id/estetica', pacienteController.buscarEstetica);
+router.patch('/:id/estetica', pacienteController.salvarEstetica);
+
 // Histórico de anotações/observações (uma por consulta)
 router.get('/:id/anotacoes', pacienteController.listarAnotacoes);
 router.post('/:id/anotacoes', pacienteController.criarAnotacao);
