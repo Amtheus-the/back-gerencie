@@ -3,7 +3,12 @@
  * Gerencia visualização detalhada dos usuários e upload de documentos
  */
 
-const { Clinica, User, Faturamento, Despesa, Analise, Documento, Paciente } = require('../models');
+const {
+  Clinica, User, Faturamento, Despesa, Analise, Documento, Paciente,
+  Agendamento, Procedimento, Orcamento, AnotacaoPaciente, ArquivoPaciente,
+  BloqueioAgenda, MaquinaCartao, DespesaRecorrente, DocumentoClinico, DocumentoPaciente,
+} = require('../models');
+const ChatbotConversa = require('../models/ChatbotConversa');
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const path = require('path');
@@ -461,6 +466,82 @@ exports.listarClinicasOperacional = async (req, res) => {
 /**
  * Buscar perfil completo de uma clínica
  */
+/**
+ * Levanta o uso de cada funcionalidade do sistema por uma clínica — quantos
+ * registros existem em cada área, pra dar uma noção de adoção/engajamento.
+ */
+async function montarUsoSistema(clinicaId, usuariosClinica) {
+  const userIds = usuariosClinica.map((u) => u.id);
+
+  const [
+    numPacientes, numOdontogramas, numAnamneses, numEstetica,
+    numAgendamentos, numBloqueios,
+    numProcedimentos,
+    numFaturamentos, numDespesas, numDespesasRecorrentes, numOrcamentos,
+    numDocumentosFinanceiros, numAnotacoes, numArquivosPaciente,
+    numReceitasAtestados, numTermosEnviados,
+    numMaquinasCartao, numUsuariosGoogleCalendar, numConversasChatbot,
+  ] = await Promise.all([
+    Paciente.count({ where: { clinica_id: clinicaId } }),
+    Paciente.count({ where: { clinica_id: clinicaId, odontogramaData: { [Op.ne]: null } } }),
+    Paciente.count({ where: { clinica_id: clinicaId, anamneseData: { [Op.ne]: null } } }),
+    Paciente.count({ where: { clinica_id: clinicaId, esteticaData: { [Op.ne]: null } } }),
+    Agendamento.count({ where: { clinica_id: clinicaId } }),
+    BloqueioAgenda.count({ where: { clinicaId } }),
+    Procedimento.count({ where: { clinicaId } }),
+    Faturamento.count({ where: { clinicaId } }),
+    Despesa.count({ where: { clinicaId } }),
+    DespesaRecorrente.count({ where: { clinicaId } }),
+    Orcamento.count({ where: { clinica_id: clinicaId } }),
+    Documento.count({ where: { clinicaId } }),
+    AnotacaoPaciente.count({ where: { clinicaId } }),
+    ArquivoPaciente.count({ where: { clinicaId } }),
+    DocumentoClinico.count({ where: { clinicaId } }),
+    DocumentoPaciente.count({ where: { clinicaId } }),
+    MaquinaCartao.count({ where: { clinicaId } }),
+    userIds.length ? User.count({ where: { id: { [Op.in]: userIds }, googleRefreshToken: { [Op.ne]: null } } }) : 0,
+    userIds.length ? ChatbotConversa.count({ where: { user_id: { [Op.in]: userIds } } }) : 0,
+  ]);
+
+  const itens = [
+    { chave: 'pacientes',        categoria: 'Pacientes',              label: 'Pacientes cadastrados',            valor: numPacientes },
+    { chave: 'odontogramas',     categoria: 'Pacientes',              label: 'Odontogramas preenchidos',         valor: numOdontogramas },
+    { chave: 'anamneses',        categoria: 'Pacientes',              label: 'Anamneses preenchidas',            valor: numAnamneses },
+    { chave: 'mapaEstetico',     categoria: 'Pacientes',              label: 'Mapa Estético preenchido',         valor: numEstetica },
+    { chave: 'anotacoes',        categoria: 'Pacientes',              label: 'Anotações de evolução',            valor: numAnotacoes },
+    { chave: 'arquivosPaciente', categoria: 'Pacientes',              label: 'Arquivos de paciente (fotos, RX)', valor: numArquivosPaciente },
+    { chave: 'agendamentos',     categoria: 'Agenda',                 label: 'Agendamentos criados',             valor: numAgendamentos },
+    { chave: 'bloqueiosAgenda',  categoria: 'Agenda',                 label: 'Bloqueios de agenda',              valor: numBloqueios },
+    { chave: 'procedimentos',    categoria: 'Agenda',                 label: 'Procedimentos cadastrados',        valor: numProcedimentos },
+    { chave: 'faturamentos',     categoria: 'Financeiro',             label: 'Faturamentos lançados',            valor: numFaturamentos },
+    { chave: 'despesas',         categoria: 'Financeiro',             label: 'Despesas lançadas',                valor: numDespesas },
+    { chave: 'despesasRecor',    categoria: 'Financeiro',             label: 'Despesas recorrentes configuradas', valor: numDespesasRecorrentes },
+    { chave: 'orcamentos',       categoria: 'Financeiro',             label: 'Orçamentos criados',               valor: numOrcamentos },
+    { chave: 'maquinasCartao',   categoria: 'Financeiro',             label: 'Máquinas de cartão cadastradas',   valor: numMaquinasCartao },
+    { chave: 'documentosFin',    categoria: 'Documentos & Assinaturas', label: 'Documentos financeiros anexados', valor: numDocumentosFinanceiros },
+    { chave: 'receitasAtestados', categoria: 'Documentos & Assinaturas', label: 'Receitas/Atestados p/ assinatura', valor: numReceitasAtestados },
+    { chave: 'termosEnviados',   categoria: 'Documentos & Assinaturas', label: 'Termos enviados a pacientes',    valor: numTermosEnviados },
+    { chave: 'googleCalendar',   categoria: 'Integrações',            label: 'Usuários c/ Google Calendar conectado', valor: numUsuariosGoogleCalendar },
+    { chave: 'chatbot',          categoria: 'Integrações',            label: 'Conversas com a Aline (chatbot)',  valor: numConversasChatbot },
+  ];
+
+  const maiorValor = Math.max(1, ...itens.map((i) => i.valor));
+  itens.forEach((i) => { i.percentualRelativo = Math.round((i.valor / maiorValor) * 100); });
+  itens.sort((a, b) => b.valor - a.valor);
+
+  const funcionalidadesUsadas = itens.filter((i) => i.valor > 0).length;
+  const funcionalidadesTotal = itens.length;
+
+  return {
+    itens,
+    funcionalidadesUsadas,
+    funcionalidadesTotal,
+    percentualAdocao: Math.round((funcionalidadesUsadas / funcionalidadesTotal) * 100),
+    maisUsada: itens[0],
+    menosUsada: itens[itens.length - 1],
+  };
+}
+
 exports.getPerfilCompletoClinica = async (req, res) => {
   try {
     const { clinicaId } = req.params;
@@ -529,6 +610,8 @@ exports.getPerfilCompletoClinica = async (req, res) => {
     const saldo = totalFaturamento - totalDespesas;
     const impostosEstimados = totalFaturamento * 0.065;
 
+    const usoSistema = await montarUsoSistema(clinicaId, clinica.usuarios || []);
+
     res.json({
       clinica: clinica.toJSON(),
       faturamentos,
@@ -543,7 +626,8 @@ exports.getPerfilCompletoClinica = async (req, res) => {
         numeroFaturamentos: faturamentos.length,
         numeroDespesas: despesas.length,
         numeroDocumentos: documentos.length
-      }
+      },
+      usoSistema
     });
 
   } catch (error) {
