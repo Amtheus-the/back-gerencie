@@ -83,7 +83,7 @@ router.post('/', async (req, res) => {
       });
     }
     console.log('[ORCAMENTO] Salvo com sucesso:', orcamento?.toJSON ? orcamento.toJSON() : orcamento);
-    res.status(201).json(normalizarOrcamento(orcamento));
+    res.status(201).json(await comSaldo(orcamento));
   } catch (err) {
     console.error('[ORCAMENTO] Erro ao inserir:', err);
     res.status(500).json({ error: err.message });
@@ -142,16 +142,22 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// Atualizar status do orçamento
+// Atualizar orçamento (status e, opcionalmente, procedimentos/valores/observações —
+// usado tanto pra só mudar o status quanto pra editar um orçamento inteiro, ex: na
+// ficha do paciente, onde não há agendamento pra decidir se cria ou atualiza)
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, procedimentos, valores, observacoes } = req.body;
     const orcamento = await Orcamento.findByPk(id);
     if (!orcamento) return res.status(404).json({ error: 'Orçamento não encontrado' });
-    orcamento.status = status;
-    await orcamento.save();
-    res.json(normalizarOrcamento(orcamento));
+    const campos = {};
+    if (status !== undefined) campos.status = status;
+    if (procedimentos !== undefined) campos.procedimentos = procedimentos;
+    if (valores !== undefined) campos.valores = valores;
+    if (observacoes !== undefined) campos.observacoes = observacoes;
+    await orcamento.update(campos);
+    res.json(await comSaldo(orcamento));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
