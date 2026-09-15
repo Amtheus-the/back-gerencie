@@ -54,6 +54,11 @@ const Agendamento = sequelize.define('Agendamento', {
     type: DataTypes.STRING(255),
     allowNull: true,
     comment: 'ID do evento correspondente no Google Calendar do dentista'
+  },
+  orcamento_id: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    comment: 'Orçamento fechado que originou este agendamento, quando marcado a partir da ficha do paciente'
   }
 }, {
   tableName: 'agendamentos',

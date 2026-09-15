@@ -37,12 +37,19 @@ async function comSaldo(orcamento) {
     order: [['createdAt', 'ASC']],
   });
   const valorPago = faturamentos.reduce((soma, f) => soma + parseFloat(f.valor), 0);
+  // Consulta marcada a partir deste orçamento (se já agendou) — pega a mais recente
+  const agendamento = await Agendamento.findOne({
+    where: { orcamento_id: json.id },
+    attributes: ['id', 'data_hora', 'status'],
+    order: [['data_hora', 'DESC']],
+  });
   return {
     ...json,
     valorTotal,
     valorPago,
     saldoAberto: Math.max(0, Math.round((valorTotal - valorPago) * 100) / 100),
     pagamentos: faturamentos,
+    agendamento: agendamento ? agendamento.toJSON() : null,
   };
 }
 

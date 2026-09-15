@@ -124,7 +124,8 @@ router.post('/', async (req, res) => {
     data_hora,
     duracao_minutos,
     status,
-    observacoes
+    observacoes,
+    orcamento_id
   } = req.body;
   console.log('🔔 [Agendamento] Dados recebidos:', req.body);
   try {
@@ -148,7 +149,8 @@ router.post('/', async (req, res) => {
       data_hora,
       duracao_minutos,
       status,
-      observacoes
+      observacoes,
+      orcamento_id: orcamento_id || null
     });
     console.log('✅ [Agendamento] Inserido com sucesso:', novoAgendamento.toJSON());
 
