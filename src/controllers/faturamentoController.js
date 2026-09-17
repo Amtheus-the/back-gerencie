@@ -42,7 +42,8 @@ exports.resumoFinanceiroPaciente = async (req, res) => {
         pagoMap[f.orcamentoId] = (pagoMap[f.orcamentoId] || 0) + parseFloat(f.valor);
       });
       saldoEmAberto = orcamentos.reduce((soma, o) => {
-        const valorTotal = Object.values(o.valores || {}).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+        const valores = typeof o.valores === 'string' ? JSON.parse(o.valores) : o.valores;
+        const valorTotal = Object.values(valores || {}).reduce((s, v) => s + (parseFloat(v) || 0), 0);
         const valorPago = pagoMap[o.id] || 0;
         return soma + Math.max(0, valorTotal - valorPago);
       }, 0);
