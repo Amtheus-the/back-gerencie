@@ -12,10 +12,13 @@ exports.resumoFinanceiroPaciente = async (req, res) => {
     }
 
     const { Op } = require('sequelize');
+    // "declarar" só controla se o lançamento entra no cálculo de imposto
+    // (DARF/DAS/RBT12) — não deve ser filtrado aqui, senão um lançamento
+    // marcado como "controle interno" some do total investido do paciente
+    // mesmo sendo dinheiro real recebido.
     const faturamentos = await Faturamento.findAll({
       where: {
         clinicaId,
-        declarar: true,
         [Op.or]: [
           { pacienteId },
           { paciente: paciente.nome }
