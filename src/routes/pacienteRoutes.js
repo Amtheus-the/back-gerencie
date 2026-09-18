@@ -50,6 +50,9 @@ router.get('/:id/historico', pacienteController.historicoProcedimentos);
 // Odontograma
 router.get('/:id/odontograma', pacienteController.buscarOdontograma);
 router.patch('/:id/odontograma', pacienteController.salvarOdontograma);
+router.post('/:id/odontograma/procedimentos', pacienteController.criarProcedimentoOdontograma);
+router.put('/:id/odontograma/procedimentos/:procId', pacienteController.atualizarProcedimentoOdontograma);
+router.delete('/:id/odontograma/procedimentos/:procId', pacienteController.excluirProcedimentoOdontograma);
 
 // Mapa Estético
 router.get('/:id/estetica', pacienteController.buscarEstetica);

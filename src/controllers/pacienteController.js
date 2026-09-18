@@ -5,6 +5,41 @@ const { Op } = require('sequelize');
 // Todos da mesma clínica veem todos os pacientes da clínica
 const filtroPaciente = (req) => ({ clinica_id: req.user.clinicaId });
 
+// O odontograma já passou por dois formatos mais antigos:
+//   v0: { [dente]: { status, procedimento, situacao, obs, atualizadoEm } }       (um procedimento só por dente)
+//   v1: { [dente]: { status, procedimentos: [...], obs, atualizadoEm } }        (lista, mas ainda presa a um dente)
+// Formato atual (v2): { dentes: { [dente]: { status } }, procedimentos: [...] } —
+// o procedimento é o item principal e pode cobrir vários dentes/faces de uma
+// vez. Muitos pacientes reais já têm dados em v0/v1 — em vez de migrar o
+// banco, normaliza sempre na leitura.
+function normalizarOdontograma(raw) {
+  if (raw && raw.dentes && Array.isArray(raw.procedimentos)) {
+    return raw; // já no formato v2
+  }
+  const dentes = {};
+  const procedimentos = [];
+  for (const [numero, d] of Object.entries(raw || {})) {
+    if (!d) continue;
+    dentes[numero] = { status: d.status };
+    const listaAntiga = Array.isArray(d.procedimentos)
+      ? d.procedimentos
+      : (d.procedimento ? [{ procedimento: d.procedimento, situacao: d.situacao, data: d.atualizadoEm ? d.atualizadoEm.slice(0, 10) : null }] : []);
+    listaAntiga.forEach((p, i) => {
+      procedimentos.push({
+        id: p.id && !String(p.id).startsWith('legado-') ? p.id : `legado-${numero}-${i}`,
+        procedimento: p.procedimento,
+        situacao: p.situacao || 'pendente',
+        data: p.data || null,
+        profissional: '',
+        dentes: [Number(numero)],
+        faces: {},
+        obs: d.obs || '',
+      });
+    });
+  }
+  return { dentes, procedimentos };
+}
+
 class PacienteController {
   // Histórico de procedimentos do paciente
   async historicoProcedimentos(req, res) {
@@ -247,38 +282,105 @@ class PacienteController {
       if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
       let dados = paciente.odontogramaData;
       if (typeof dados === 'string') { try { dados = JSON.parse(dados); } catch { dados = {}; } }
-      res.json({ dados: dados || {} });
+      res.json({ dados: normalizarOdontograma(dados) });
     } catch (error) {
       res.status(500).json({ error: 'Erro ao buscar odontograma', detail: error.message });
     }
   }
 
+  // Só o status de diagnóstico do dente (São/Cárie/etc) — os procedimentos
+  // têm suas próprias rotas abaixo, já que agora um procedimento pode cobrir
+  // vários dentes de uma vez.
   async salvarOdontograma(req, res) {
     try {
       const { id } = req.params;
-      const { dente, status, procedimento, obs, situacao } = req.body;
+      const { dente, status } = req.body;
       const clinicaId = req.user.clinicaId;
       const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId } });
       if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
-      let dados = paciente.odontogramaData || {};
+      let dados = paciente.odontogramaData;
       if (typeof dados === 'string') { try { dados = JSON.parse(dados); } catch { dados = {}; } }
+      dados = normalizarOdontograma(dados || {});
       if (status === null) {
-        delete dados[dente];
+        delete dados.dentes[dente];
       } else {
-        // Guarda o estado anterior no histórico antes de sobrescrever — é só
-        // um log pra consulta (nada de agenda), mostrado no modal do dente.
-        const anterior = dados[dente];
-        const historico = Array.isArray(anterior?.historico) ? [...anterior.historico] : [];
-        if (anterior && anterior.status) {
-          const { historico: _ignora, ...entradaAnterior } = anterior;
-          historico.push(entradaAnterior);
-        }
-        dados[dente] = { status, procedimento: procedimento || '', obs: obs || '', situacao: situacao || 'pendente', atualizadoEm: new Date().toISOString(), historico };
+        dados.dentes[dente] = { status };
       }
       await paciente.update({ odontogramaData: dados });
       res.json({ success: true, dados });
     } catch (error) {
       res.status(500).json({ error: 'Erro ao salvar odontograma', detail: error.message });
+    }
+  }
+
+  async criarProcedimentoOdontograma(req, res) {
+    try {
+      const { id } = req.params;
+      const { procedimento, situacao, data, profissional, dentes, faces, obs } = req.body;
+      if (!procedimento || !Array.isArray(dentes) || dentes.length === 0) {
+        return res.status(400).json({ error: 'Informe o procedimento e ao menos um dente.' });
+      }
+      const clinicaId = req.user.clinicaId;
+      const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId } });
+      if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+      let raw = paciente.odontogramaData;
+      if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch { raw = {}; } }
+      const odonto = normalizarOdontograma(raw || {});
+      odonto.procedimentos.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        procedimento, situacao: situacao || 'pendente', data: data || null,
+        profissional: profissional || '', dentes, faces: faces || {}, obs: obs || '',
+      });
+      await paciente.update({ odontogramaData: odonto });
+      res.status(201).json({ success: true, dados: odonto });
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao criar procedimento', detail: error.message });
+    }
+  }
+
+  async atualizarProcedimentoOdontograma(req, res) {
+    try {
+      const { id, procId } = req.params;
+      const { procedimento, situacao, data, profissional, dentes, faces, obs } = req.body;
+      const clinicaId = req.user.clinicaId;
+      const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId } });
+      if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+      let raw = paciente.odontogramaData;
+      if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch { raw = {}; } }
+      const odonto = normalizarOdontograma(raw || {});
+      const idx = odonto.procedimentos.findIndex(p => p.id === procId);
+      if (idx === -1) return res.status(404).json({ error: 'Procedimento não encontrado' });
+      odonto.procedimentos[idx] = {
+        ...odonto.procedimentos[idx],
+        ...(procedimento !== undefined && { procedimento }),
+        ...(situacao !== undefined && { situacao }),
+        ...(data !== undefined && { data }),
+        ...(profissional !== undefined && { profissional }),
+        ...(dentes !== undefined && { dentes }),
+        ...(faces !== undefined && { faces }),
+        ...(obs !== undefined && { obs }),
+      };
+      await paciente.update({ odontogramaData: odonto });
+      res.json({ success: true, dados: odonto });
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao atualizar procedimento', detail: error.message });
+    }
+  }
+
+  async excluirProcedimentoOdontograma(req, res) {
+    try {
+      const { id, procId } = req.params;
+      const clinicaId = req.user.clinicaId;
+      const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId } });
+      if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
+      let raw = paciente.odontogramaData;
+      if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch { raw = {}; } }
+      const odonto = normalizarOdontograma(raw || {});
+      odonto.procedimentos = odonto.procedimentos.filter(p => p.id !== procId);
+      await paciente.update({ odontogramaData: odonto });
+      res.json({ success: true, dados: odonto });
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao excluir procedimento', detail: error.message });
     }
   }
 
