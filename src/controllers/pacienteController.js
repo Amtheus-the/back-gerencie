@@ -256,7 +256,7 @@ class PacienteController {
   async salvarOdontograma(req, res) {
     try {
       const { id } = req.params;
-      const { dente, status, procedimento, obs } = req.body;
+      const { dente, status, procedimento, obs, situacao } = req.body;
       const clinicaId = req.user.clinicaId;
       const paciente = await Paciente.findOne({ where: { id, clinica_id: clinicaId } });
       if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
@@ -265,7 +265,15 @@ class PacienteController {
       if (status === null) {
         delete dados[dente];
       } else {
-        dados[dente] = { status, procedimento: procedimento || '', obs: obs || '', atualizadoEm: new Date().toISOString() };
+        // Guarda o estado anterior no histórico antes de sobrescrever — é só
+        // um log pra consulta (nada de agenda), mostrado no modal do dente.
+        const anterior = dados[dente];
+        const historico = Array.isArray(anterior?.historico) ? [...anterior.historico] : [];
+        if (anterior && anterior.status) {
+          const { historico: _ignora, ...entradaAnterior } = anterior;
+          historico.push(entradaAnterior);
+        }
+        dados[dente] = { status, procedimento: procedimento || '', obs: obs || '', situacao: situacao || 'pendente', atualizadoEm: new Date().toISOString(), historico };
       }
       await paciente.update({ odontogramaData: dados });
       res.json({ success: true, dados });
