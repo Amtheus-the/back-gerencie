@@ -63,6 +63,17 @@ exports.getMetricas = async (req, res) => {
       }
     });
 
+    // Lançamentos de controle interno (declarar = false): ficam fora de todo
+    // cálculo de imposto, mas entram no "Resultado do Mês" — é dinheiro real.
+    const faturamentosControle = await Faturamento.findAll({
+      where: {
+        clinicaId,
+        declarar: false,
+        data: { [Op.between]: [dataInicio, dataFim] }
+      }
+    });
+    const controleInterno = faturamentosControle.reduce((sum, f) => sum + parseFloat(f.valor), 0);
+
     // Busca despesas do período
     const despesas = await Despesa.findAll({
       where: {
@@ -297,6 +308,7 @@ exports.getMetricas = async (req, res) => {
         darf: darf.toFixed(2)
       },
       pessoaJuridica,
+      controleInterno: controleInterno.toFixed(2),
       despesasPorCategoria,
       despesasIndividuais,
       aniversariantesMes: aniversariantesMes.map(p => ({
