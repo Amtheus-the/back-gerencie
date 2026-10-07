@@ -45,6 +45,8 @@ const anamneseRoutes = require('./routes/anamneseRoutes');
 // Inicializa o app Express
 const webhookWhatsappRoutes = require('./routes/webhookWhatsapp');
 const openRoutes = require('./routes/openRoutes');
+const mcpRoutes = require('./routes/mcpRoutes');
+const apiTokenRoutes = require('./routes/apiTokenRoutes');
 const webhookOpenRoutes = require('./routes/webhookOpenRoutes');
 const app = express();
 
@@ -97,6 +99,9 @@ app.post('/api/asaas/webhook', async (req, res) => {
 });
 // Rotas 100% abertas, sem JWT
 app.use('/api/open', openRoutes);
+// Conector MCP (Claude): autentica por token próprio, e precisa vir antes do logger
+// abaixo pra o token que vai no endereço não aparecer nos logs.
+app.use('/api/mcp', mcpRoutes);
 // Rota aberta para teste global
 app.get('/api/teste-aberto', (req, res) => {
   res.send('Rota aberta funcionando!');
@@ -138,6 +143,7 @@ app.use('/api/clinicas', clinicaRoutes);
 app.use('/api/agendamentos', agendamentosRoutes);
 app.use('/api/webhook-whatsapp', webhookWhatsappRoutes);
 app.use('/api/orcamentos', orcamentoRoutes);
+app.use('/api/api-tokens', apiTokenRoutes);
 app.use('/api/robo', roboRoutes);
 app.use('/api/clinica', clinicaDashboardRoutes);
 app.use('/api/anamneses', anamneseRoutes);

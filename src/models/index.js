@@ -27,6 +27,7 @@ const DocumentoClinico = require('./DocumentoClinico');
 const AnotacaoPaciente = require('./AnotacaoPaciente');
 const ArquivoPaciente = require('./ArquivoPaciente');
 const BloqueioAgenda = require('./BloqueioAgenda');
+const ApiToken = require('./ApiToken');
 
 // Relacionamentos do Orcamento
 Orcamento.belongsTo(Agendamento, { foreignKey: 'agendamento_id', as: 'agendamento' });
@@ -357,4 +358,5 @@ module.exports = {
   AnotacaoPaciente,
   ArquivoPaciente,
   BloqueioAgenda,
+  ApiToken,
 };
