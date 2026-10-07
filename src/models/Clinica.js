@@ -187,6 +187,13 @@ const Clinica = sequelize.define('Clinica', {
     defaultValue: true,
     comment: 'Indica se a clínica está ativa'
   },
+  visionTax: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    field: 'vision_tax',
+    comment: 'Cliente acompanhado pela equipe da Vision Tax (carteira exibida na tela admin "Vision Tax")'
+  },
   atendeOdontologia: {
     type: DataTypes.BOOLEAN,
     allowNull: false,

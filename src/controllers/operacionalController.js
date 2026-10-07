@@ -1002,4 +1002,81 @@ exports.visualizarNotaManual = async (req, res) => {
   }
 };
 
+// ====================================
+// CARTEIRA VISION TAX
+// ====================================
+
+/**
+ * Clínicas que a equipe da Vision Tax acompanha, com as pendências de trabalho
+ * de cada uma: recibos de pessoa física sem recibo e notas PJ ainda não emitidas.
+ * Lançamentos de controle interno (declarar = false) não geram pendência.
+ */
+exports.listarVisionTax = async (req, res) => {
+  try {
+    const { search = '' } = req.query;
+    const where = { visionTax: true };
+    if (search) {
+      where[Op.or] = [
+        { nome: { [Op.like]: `%${search}%` } },
+        { cpf: { [Op.like]: `%${search}%` } },
+        { cnpj: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const clinicas = await Clinica.findAll({
+      where,
+      attributes: ['id', 'nome', 'tipoPessoa', 'cpf', 'cnpj', 'plano', 'ativo', 'email', 'telefone'],
+      order: [['nome', 'ASC']],
+      raw: true,
+    });
+    const ids = clinicas.map((c) => c.id);
+    const pendencias = {};
+    ids.forEach((id) => { pendencias[id] = { recibosPendentes: 0, notasPendentes: 0 }; });
+
+    if (ids.length) {
+      const pf = await Faturamento.findAll({
+        where: { clinicaId: { [Op.in]: ids }, tipoPessoa: 'PF', declarar: true, reciboNome: null },
+        attributes: ['clinicaId', [sequelize.fn('COUNT', sequelize.col('id')), 'total']],
+        group: ['clinicaId'],
+        raw: true,
+      });
+      pf.forEach((r) => { pendencias[r.clinicaId].recibosPendentes = Number(r.total); });
+
+      const pj = await Faturamento.findAll({
+        where: { clinicaId: { [Op.in]: ids }, tipoPessoa: 'PJ', declarar: true, notaEmitida: false },
+        attributes: ['clinicaId', [sequelize.fn('COUNT', sequelize.col('id')), 'total']],
+        group: ['clinicaId'],
+        raw: true,
+      });
+      pj.forEach((r) => { pendencias[r.clinicaId].notasPendentes = Number(r.total); });
+    }
+
+    res.json({
+      success: true,
+      clinicas: clinicas.map((c) => ({ ...c, ...pendencias[c.id] })),
+    });
+  } catch (error) {
+    console.error('[Operacional] Erro ao listar carteira Vision Tax:', error);
+    res.status(500).json({ success: false, message: 'Erro ao listar carteira Vision Tax' });
+  }
+};
+
+// Marca/desmarca uma clínica como cliente acompanhado pela Vision Tax
+exports.definirVisionTax = async (req, res) => {
+  try {
+    const { clinicaId } = req.params;
+    const { visionTax } = req.body;
+    if (typeof visionTax !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'Informe visionTax como true ou false.' });
+    }
+    const clinica = await Clinica.findByPk(clinicaId);
+    if (!clinica) return res.status(404).json({ success: false, message: 'Clínica não encontrada' });
+    await clinica.update({ visionTax });
+    res.json({ success: true, clinica: { id: clinica.id, nome: clinica.nome, visionTax: clinica.visionTax } });
+  } catch (error) {
+    console.error('[Operacional] Erro ao definir Vision Tax:', error);
+    res.status(500).json({ success: false, message: 'Erro ao atualizar carteira Vision Tax' });
+  }
+};
+
 module.exports = exports;

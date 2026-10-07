@@ -97,6 +97,10 @@ router.delete('/documentos/:documentoId', operacionalController.deletarDocumento
 // ROTAS PARA CLÍNICAS
 // ====================================
 
+// Carteira Vision Tax: clientes acompanhados pela equipe (definida antes de /clinicas/:clinicaId/...)
+router.get('/vision-tax', operacionalController.listarVisionTax);
+router.patch('/clinicas/:clinicaId/vision-tax', operacionalController.definirVisionTax);
+
 // Listar clínicas para painel operacional
 router.get('/clinicas', operacionalController.listarClinicasOperacional);
 
