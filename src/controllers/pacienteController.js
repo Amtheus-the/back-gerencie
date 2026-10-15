@@ -1,4 +1,4 @@
-const { Agendamento, Procedimento, Paciente, AnotacaoPaciente, ArquivoPaciente, User } = require('../models');
+const { Agendamento, Procedimento, Paciente, AnotacaoPaciente, ArquivoPaciente, User, Faturamento } = require('../models');
 const { s3, S3_BUCKET, getPresignedUrl, extractS3Key } = require('../config/s3');
 const { Op } = require('sequelize');
 
@@ -41,15 +41,18 @@ function normalizarOdontograma(raw) {
 }
 
 class PacienteController {
-  // Histórico de procedimentos do paciente
+  // Histórico do paciente: consultas da agenda + pagamentos lançados no faturamento.
+  // Vale pra clínica toda (qualquer profissional/secretária vê o que os outros marcaram).
   async historicoProcedimentos(req, res) {
     try {
       const { id } = req.params;
-      const userId = req.user.id;
+
+      const paciente = await Paciente.findOne({ where: { id, ...filtroPaciente(req) }, attributes: ['id', 'nome'] });
+      if (!paciente) return res.status(404).json({ message: 'Paciente não encontrado' });
 
       // Busca agendamentos do paciente, incluindo dados do procedimento
       const agendamentos = await Agendamento.findAll({
-        where: { paciente_id: id, user_id: userId },
+        where: { paciente_id: id },
         include: [
           {
             model: Procedimento,
@@ -82,9 +85,10 @@ class PacienteController {
       const nomePorId = Object.fromEntries(procedimentosExtras.map(p => [p.id, p.nome]));
 
       // Mapeia para um formato mais amigável
-      const historico = agendamentos.map(a => {
+      const consultas = agendamentos.map(a => {
         const nomes = idsDoAgendamento(a).map(pid => nomePorId[pid]).filter(Boolean);
         return {
+          tipo: 'consulta',
           id: a.id,
           data: a.data_hora,
           procedimento: nomes.length ? nomes.join(', ') : (a.procedimento?.nome || ''),
@@ -94,6 +98,29 @@ class PacienteController {
           observacoes: a.observacoes
         };
       });
+
+      // Pagamentos do paciente (lançamento manual não gera agendamento, então entram aqui).
+      // Casa por id ou por nome, igual ao resumo financeiro (a FK pode não estar preenchida).
+      const faturamentos = await Faturamento.findAll({
+        where: {
+          clinicaId: req.user.clinicaId,
+          [Op.or]: [{ pacienteId: id }, { paciente: paciente.nome }],
+        },
+        order: [['data', 'DESC']],
+      });
+      const pagamentos = faturamentos.map(f => ({
+        tipo: 'pagamento',
+        id: `pag-${f.id}`,
+        data: f.data,
+        procedimento: f.descricao || 'Pagamento',
+        descricao: f.formaPagamento || '',
+        valor: parseFloat(f.valor),
+        status: 'pago',
+        observacoes: f.observacoes || '',
+      }));
+
+      const historico = [...consultas, ...pagamentos]
+        .sort((a, b) => new Date(b.data) - new Date(a.data));
 
       return res.json(historico);
     } catch (error) {
