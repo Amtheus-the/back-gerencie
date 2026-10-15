@@ -175,13 +175,14 @@ exports.criarFaturamento = async (req, res) => {
   const { notificarNovoFaturamento } = require('../services/emailService');
   const userId = req.user.id;
   let { descricao, valor, data, formaPagamento, pacienteId, paciente_id, paciente, tipoPessoa, observacoes, cpf, declarar,
-        maquinaCartaoId, parcelasCartao, cartaoAntecipado, taxaCartaoResponsavel, orcamentoId,
+        maquinaCartaoId, parcelasCartao, bandeiraCartao, cartaoAntecipado, taxaCartaoResponsavel, orcamentoId,
         pagadorNome, pagadorCpf, pagadorTipoPessoa,
         pagadorCep, pagadorLogradouro, pagadorNumero, pagadorComplemento, pagadorBairro, pagadorCidade, pagadorEstado } = req.body;
   // Aceita tanto pacienteId (camelCase, atributo real do model) quanto paciente_id (compat com clientes antigos)
   pacienteId = pacienteId || paciente_id || null;
   console.log('🔎 [DEBUG] Corpo da requisição faturamento:', req.body);
   const { Paciente, MaquinaCartao, TaxaMaquinaCartao, Despesa } = require('../models');
+  const { BANDEIRAS } = require('./maquinasCartaoController');
   // Se vier só nome, buscar o id
   if (!pacienteId && paciente) {
     const pacienteObj = await Paciente.findOne({ where: { nome: paciente } });
@@ -207,21 +208,32 @@ exports.criarFaturamento = async (req, res) => {
       attributes: ['clinicaId']
     });
 
-    // Taxa de máquina de cartão (só se veio máquina + parcelas selecionadas)
+    // Taxa de máquina de cartão (crédito: máquina + parcelas; débito: só a máquina).
+    // Procura a taxa da bandeira escolhida; sem taxa própria, cai na tabela padrão da máquina.
     let taxaCartaoPercentual = null;
     let taxaCartaoValor = null;
     let maquinaCartaoNome = null;
-    if (formaPagamento === 'Cartão de Crédito' && maquinaCartaoId && parcelasCartao) {
+    const ehDebito = formaPagamento === 'Cartão de Débito';
+    const ehCredito = formaPagamento === 'Cartão de Crédito';
+    const bandeiraInformada = (ehDebito || ehCredito) && BANDEIRAS.includes(bandeiraCartao) ? bandeiraCartao : '';
+    if ((ehCredito || ehDebito) && maquinaCartaoId && (ehDebito || parcelasCartao)) {
+      const parcelasBusca = ehDebito ? 1 : parcelasCartao;
+      const modalidade = ehDebito ? 'debito' : 'credito';
       const maquina = await MaquinaCartao.findOne({ where: { id: maquinaCartaoId, clinicaId: usuario.clinicaId } });
-      const taxaLinha = maquina && await TaxaMaquinaCartao.findOne({
-        where: { maquinaId: maquinaCartaoId, parcelas: parcelasCartao }
-      });
+      let taxaLinha = null;
+      if (maquina) {
+        const candidatas = await TaxaMaquinaCartao.findAll({
+          where: { maquinaId: maquinaCartaoId, modalidade, parcelas: parcelasBusca, bandeira: [bandeiraInformada, ''] }
+        });
+        taxaLinha = candidatas.find(t => t.bandeira === bandeiraInformada) || candidatas.find(t => t.bandeira === '') || null;
+      }
       if (taxaLinha) {
         maquinaCartaoNome = maquina.nome;
         taxaCartaoPercentual = (cartaoAntecipado && taxaLinha.taxaAntecipacaoPercentual !== null)
           ? taxaLinha.taxaAntecipacaoPercentual
           : taxaLinha.taxaPercentual;
         taxaCartaoValor = Math.round(parseFloat(valor) * (parseFloat(taxaCartaoPercentual) / 100) * 100) / 100;
+        parcelasCartao = parcelasBusca;
       }
     }
 
@@ -252,6 +264,7 @@ exports.criarFaturamento = async (req, res) => {
       ...(taxaCartaoValor !== null && {
         maquinaCartaoId,
         parcelasCartao,
+        bandeiraCartao: bandeiraInformada || null,
         cartaoAntecipado: !!cartaoAntecipado,
         taxaCartaoResponsavel: taxaCartaoResponsavel || null,
         taxaCartaoPercentual,
@@ -264,7 +277,7 @@ exports.criarFaturamento = async (req, res) => {
       const despesaTaxa = await Despesa.create({
         userId,
         clinicaId: usuario.clinicaId,
-        descricao: `Taxa de cartão (${maquinaCartaoNome} - ${parcelasCartao}x${cartaoAntecipado ? ' antecipado' : ''})`,
+        descricao: `Taxa de cartão (${maquinaCartaoNome} - ${ehDebito ? 'débito' : `${parcelasCartao}x`}${bandeiraInformada ? ` ${bandeiraInformada}` : ''}${cartaoAntecipado ? ' antecipado' : ''})`,
         valor: taxaCartaoValor,
         categoria: 'Outros',
         data,

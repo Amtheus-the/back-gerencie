@@ -70,29 +70,41 @@ exports.deletar = async (req, res) => {
   }
 };
 
-// Substitui a tabela de taxas por parcela de uma máquina
-// Body: { taxas: [{ parcelas, taxaPercentual, taxaAntecipacaoPercentual }] }
+// Bandeiras aceitas ('' = taxa padrão, vale para qualquer bandeira sem taxa própria)
+const BANDEIRAS = ['Visa', 'Mastercard', 'Elo', 'American Express', 'Hipercard'];
+exports.BANDEIRAS = BANDEIRAS;
+
+// Substitui a tabela de taxas de UMA combinação (modalidade + bandeira) de uma máquina.
+// Body: { modalidade?: 'credito'|'debito', bandeira?: '' | uma de BANDEIRAS,
+//         taxas: [{ parcelas, taxaPercentual, taxaAntecipacaoPercentual }] }
+// Sem modalidade/bandeira no body = crédito/padrão (compatível com o front antigo).
+// Débito não tem parcelas nem antecipação: grava uma linha com parcelas = 1.
 exports.salvarTaxas = async (req, res) => {
   try {
     const { clinicaId } = req.user;
     const { id } = req.params;
     const { taxas } = req.body;
+    const modalidade = req.body.modalidade === 'debito' ? 'debito' : 'credito';
+    const bandeira = req.body.bandeira || '';
 
     const maquina = await MaquinaCartao.findOne({ where: { id, clinicaId } });
     if (!maquina) return res.status(404).json({ error: 'Máquina não encontrada.' });
     if (!Array.isArray(taxas)) return res.status(400).json({ error: 'Envie a lista de taxas por parcela.' });
+    if (bandeira && !BANDEIRAS.includes(bandeira)) return res.status(400).json({ error: 'Bandeira inválida.' });
 
-    await TaxaMaquinaCartao.destroy({ where: { maquinaId: id } });
-    const criadas = await TaxaMaquinaCartao.bulkCreate(
-      taxas
-        .filter(t => t.parcelas && t.taxaPercentual !== '' && t.taxaPercentual !== null && t.taxaPercentual !== undefined)
-        .map(t => ({
-          maquinaId: id,
-          parcelas: t.parcelas,
-          taxaPercentual: t.taxaPercentual,
-          taxaAntecipacaoPercentual: t.taxaAntecipacaoPercentual || null,
-        }))
-    );
+    const linhas = taxas
+      .filter(t => t.parcelas && t.taxaPercentual !== '' && t.taxaPercentual !== null && t.taxaPercentual !== undefined)
+      .map(t => ({
+        maquinaId: id,
+        modalidade,
+        bandeira,
+        parcelas: modalidade === 'debito' ? 1 : t.parcelas,
+        taxaPercentual: t.taxaPercentual,
+        taxaAntecipacaoPercentual: modalidade === 'debito' ? null : (t.taxaAntecipacaoPercentual || null),
+      }));
+
+    await TaxaMaquinaCartao.destroy({ where: { maquinaId: id, modalidade, bandeira } });
+    const criadas = await TaxaMaquinaCartao.bulkCreate(linhas);
 
     res.json(criadas);
   } catch (e) {

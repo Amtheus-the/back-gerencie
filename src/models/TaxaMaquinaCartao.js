@@ -17,6 +17,17 @@ const TaxaMaquinaCartao = sequelize.define('TaxaMaquinaCartao', {
     allowNull: false,
     field: 'maquina_id'
   },
+  modalidade: {
+    type: DataTypes.ENUM('credito', 'debito'),
+    allowNull: false,
+    defaultValue: 'credito',
+  },
+  bandeira: {
+    type: DataTypes.STRING(30),
+    allowNull: false,
+    defaultValue: '',
+    comment: "'' = taxa padrão (vale para qualquer bandeira sem taxa própria)"
+  },
   parcelas: {
     type: DataTypes.INTEGER,
     allowNull: false,

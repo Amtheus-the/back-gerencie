@@ -218,6 +218,11 @@ const Faturamento = sequelize.define('Faturamento', {
     allowNull: true,
     field: 'maquina_cartao_id',
   },
+  bandeiraCartao: {
+    type: DataTypes.STRING(30),
+    allowNull: true,
+    field: 'bandeira_cartao',
+  },
   parcelasCartao: {
     type: DataTypes.INTEGER,
     allowNull: true,
