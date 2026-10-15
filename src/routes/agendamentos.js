@@ -129,6 +129,16 @@ router.post('/', async (req, res) => {
   } = req.body;
   console.log('🔔 [Agendamento] Dados recebidos:', req.body);
   try {
+    // Procedimento é obrigatório; sem isso o banco recusa por chave estrangeira com uma mensagem técnica
+    const idsInformados = (Array.isArray(procedimentos) && procedimentos.length ? procedimentos : [procedimento_id]).filter(Boolean);
+    if (idsInformados.length === 0) {
+      return res.status(400).json({ error: 'Selecione pelo menos um procedimento para agendar.' });
+    }
+    const encontrados = await Procedimento.count({ where: { id: idsInformados } });
+    if (encontrados !== new Set(idsInformados).size) {
+      return res.status(400).json({ error: 'Um dos procedimentos selecionados não existe mais. Atualize a página e escolha de novo.' });
+    }
+
     const conflito = await encontrarBloqueioConflitante(user_id, data_hora, duracao_minutos);
     if (conflito) {
       return res.status(409).json({
@@ -254,6 +264,7 @@ router.put('/:id', async (req, res) => {
       agendamento.procedimentos = procedimentos;
       agendamento.procedimento_id = procedimentos[0];
     } else if (procedimento_id !== undefined) {
+      if (!procedimento_id) return res.status(400).json({ message: 'Selecione pelo menos um procedimento.' });
       agendamento.procedimento_id = procedimento_id;
       agendamento.procedimentos = [procedimento_id];
     }
