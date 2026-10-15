@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const faturamentoController = require('../controllers/faturamentoController');
+const { validarNovoFaturamento } = require('../middleware/validacao');
 const { verificarToken } = require('../middleware/authMiddleware');
 const { verificarPermissaoModulo } = require('../middleware/permissaoMiddleware');
 
@@ -30,13 +31,6 @@ router.get('/paciente/:pacienteId/resumo', (req, res, next) => {
 router.use(verificarPermissaoModulo('faturamento'));
 
 /**
- * @route   GET /api/faturamento/parametros-municipio
- * @desc    Consulta parâmetros fiscais do município via Webmania®
- * @access  Private
- */
-router.get('/parametros-municipio', faturamentoController.consultarParametrosMunicipio);
-
-/**
  * @route   GET /api/faturamento
  * @desc    Lista todo o faturamento do usuário
  * @access  Private
@@ -48,7 +42,7 @@ router.get('/', faturamentoController.listarFaturamento);
  * @desc    Registra um novo faturamento
  * @access  Private
  */
-router.post('/', faturamentoController.criarFaturamento);
+router.post('/', validarNovoFaturamento, faturamentoController.criarFaturamento);
 
 /**
  * @route   GET /api/faturamento/:id

@@ -14,7 +14,6 @@ const { Agendamento, Paciente } = require('../models');
 // Webhook para status da mensagem do WhatsApp (sem autenticação)
 router.post('/status_da_mensagem', async (req, res) => {
   try {
-    console.log('[WHATSAPP][STATUS_DA_MENSAGEM] Body:', JSON.stringify(req.body, null, 2));
     res.json({ success: true });
   } catch (err) {
     console.error('❌ Erro no webhook WhatsApp status_da_mensagem:', err);
@@ -25,7 +24,6 @@ router.post('/status_da_mensagem', async (req, res) => {
 // Webhook para ao_enviar do WhatsApp (sem autenticação)
 router.post('/ao_enviar', async (req, res) => {
   try {
-    console.log('[WHATSAPP][AO_ENVIAR] Body:', JSON.stringify(req.body, null, 2));
     res.json({ success: true });
   } catch (err) {
     console.error('❌ Erro no webhook WhatsApp ao_enviar:', err);
@@ -35,7 +33,6 @@ router.post('/ao_enviar', async (req, res) => {
 
 // Webhook para receber mensagens do WhatsApp (sem autenticação)
 router.post('/', async (req, res) => {
-  console.log('[WHATSAPP][RECEBIDO] Body:', JSON.stringify(req.body, null, 2));
   try {
     const { body } = req;
 

@@ -45,7 +45,7 @@ const { sendPasswordReset, sendContaBloqueada } = require('../services/emailServ
  */
 exports.forgotPassword = async (req, res) => {
   try {
-    console.log('🔵 [RecuperarSenha] Requisição recebida para:', req.body.email);
+    console.log('🔵 [RecuperarSenha] Requisição recebida');
     const { email } = req.body;
     if (!email) {
       console.log('❌ [RecuperarSenha] E-mail não informado');
@@ -141,7 +141,6 @@ const { atualizarStatusInadimplencia } = require('../services/asaasStatusService
 exports.register = async (req, res) => {
   try {
     console.log('🔵 [Backend] POST /api/auth/register - Requisição recebida');
-    console.log('📝 Dados recebidos:', req.body);
     
     // Valida dados de entrada
     const errors = validationResult(req);
@@ -273,7 +272,7 @@ exports.register = async (req, res) => {
     const token = jwt.sign(
       { userId: user.id, email: user.email, isAdmin: user.isAdmin },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE }
+      { expiresIn: process.env.JWT_EXPIRE || '12h' }
     );
 
     console.log('✅ [Backend] Token gerado, enviando resposta...');
@@ -308,7 +307,6 @@ const LOGIN_BLOQUEIO_MINUTOS = 15;
 exports.login = async (req, res) => {
   try {
     console.log('🔵 [Backend] POST /api/auth/login - Requisição recebida');
-    console.log('📧 Email:', req.body.email);
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -410,7 +408,7 @@ exports.login = async (req, res) => {
     const token = jwt.sign(
       { userId: user.id, email: user.email, isAdmin: user.isAdmin },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE }
+      { expiresIn: process.env.JWT_EXPIRE || '12h' }
     );
 
     console.log('✅ [Backend] Token gerado, enviando resposta...');

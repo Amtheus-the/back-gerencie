@@ -87,36 +87,6 @@ exports.resumoFinanceiroPaciente = async (req, res) => {
   }
 };
 /**
- * Consulta parâmetros fiscais e códigos de serviço do município via Webmania®
- * GET /api/faturamento/parametros-municipio
- */
-exports.consultarParametrosMunicipio = async (req, res) => {
-  try {
-    console.log('🔎 [NFS-e] Consultando parâmetros fiscais do município...');
-    const response = await axios.get('https://api.webmania.com.br/2/nfse/status', {
-      headers: {
-        Authorization: 'Bearer Wr3XN0bzTtELmxlLmUgdfHlcjcO20KniHGeCtZKG',
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      params: {
-        cnpj: '60146430000148'
-      }
-    });
-    console.log('✅ [NFS-e] Parâmetros fiscais recebidos:', JSON.stringify(response.data, null, 2));
-    // Retorna todos os parâmetros disponíveis para o município
-    return res.json({ success: true, parametros: response.data });
-  } catch (error) {
-    console.error('❌ [NFS-e] Erro ao consultar parâmetros do município:', error.response?.data || error.message);
-    if (error.response) {
-      console.error('❌ [NFS-e] Status:', error.response.status);
-      console.error('❌ [NFS-e] Headers:', error.response.headers);
-      console.error('❌ [NFS-e] Data:', error.response.data);
-    }
-    return res.status(500).json({ success: false, message: 'Erro ao consultar parâmetros do município', error: error.response?.data || error.message });
-  }
-};
-/**
  * Controller de faturamento
  * Gerencia lógica de CRUD para faturamento
  */
@@ -180,18 +150,21 @@ exports.criarFaturamento = async (req, res) => {
         pagadorCep, pagadorLogradouro, pagadorNumero, pagadorComplemento, pagadorBairro, pagadorCidade, pagadorEstado } = req.body;
   // Aceita tanto pacienteId (camelCase, atributo real do model) quanto paciente_id (compat com clientes antigos)
   pacienteId = pacienteId || paciente_id || null;
-  console.log('🔎 [DEBUG] Corpo da requisição faturamento:', req.body);
   const { Paciente, MaquinaCartao, TaxaMaquinaCartao, Despesa } = require('../models');
   const { BANDEIRAS } = require('./maquinasCartaoController');
   // Se vier só nome, buscar o id
+  // (sempre dentro da clínica de quem está logado: nome repetido em outra clínica não pode ser confundido)
   if (!pacienteId && paciente) {
-    const pacienteObj = await Paciente.findOne({ where: { nome: paciente } });
+    const pacienteObj = await Paciente.findOne({ where: { nome: paciente, clinica_id: req.user.clinicaId } });
     pacienteId = pacienteObj ? pacienteObj.id : null;
   }
-  // Se vier só id, buscar o nome
-  if (pacienteId && !paciente) {
-    const pacienteObj = await Paciente.findByPk(pacienteId);
-    paciente = pacienteObj ? pacienteObj.nome : null;
+  // Se vier um id, ele precisa ser de um paciente da mesma clínica
+  if (pacienteId) {
+    const pacienteObj = await Paciente.findOne({ where: { id: pacienteId, clinica_id: req.user.clinicaId } });
+    if (!pacienteObj) {
+      return res.status(400).json({ success: false, message: 'Paciente não encontrado nesta clínica' });
+    }
+    if (!paciente) paciente = pacienteObj.nome;
   }
 
     // Validação básica

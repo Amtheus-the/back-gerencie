@@ -42,4 +42,32 @@ async function atualizarStatusInadimplencia(clinica) {
   }
 }
 
-module.exports = { atualizarStatusInadimplencia };
+/**
+ * O webhook do Asaas chega numa rota aberta, então o payload não é confiável:
+ * antes de mexer no plano, confirma na própria API do Asaas.
+ */
+async function confirmarPagamento(paymentId, customerId) {
+  if (!paymentId || !customerId) return false;
+  try {
+    const { data } = await axios.get(`${ASAAS_API_URL}/payments/${encodeURIComponent(paymentId)}`, { headers: asaasHeaders });
+    return data?.customer === customerId && ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(data?.status);
+  } catch (err) {
+    console.error('[Asaas] Não foi possível confirmar o pagamento', paymentId, ':', err.response?.status || err.message);
+    return false;
+  }
+}
+
+async function confirmarAssinaturaEncerrada(subscriptionId) {
+  if (!subscriptionId) return false;
+  try {
+    const { data } = await axios.get(`${ASAAS_API_URL}/subscriptions/${encodeURIComponent(subscriptionId)}`, { headers: asaasHeaders });
+    return data?.deleted === true || ['INACTIVE', 'EXPIRED'].includes(data?.status);
+  } catch (err) {
+    // assinatura removida no Asaas costuma responder 404
+    if (err.response?.status === 404) return true;
+    console.error('[Asaas] Não foi possível confirmar a assinatura', subscriptionId, ':', err.response?.status || err.message);
+    return false;
+  }
+}
+
+module.exports = { atualizarStatusInadimplencia, confirmarPagamento, confirmarAssinaturaEncerrada };

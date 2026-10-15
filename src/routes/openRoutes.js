@@ -7,7 +7,7 @@ const router = express.Router();
 // Webhook para status da mensagem do WhatsApp (sem autenticação)
 router.post('/webhook-whatsapp/status_da_mensagem', async (req, res) => {
   try {
-    console.log('[WHATSAPP][STATUS_DA_MENSAGEM] Body:', JSON.stringify(req.body, null, 2));
+    console.log('[WHATSAPP][STATUS_DA_MENSAGEM] recebido');
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -17,7 +17,7 @@ router.post('/webhook-whatsapp/status_da_mensagem', async (req, res) => {
 // Webhook para ao_enviar do WhatsApp (sem autenticação)
 router.post('/webhook-whatsapp/ao_enviar', async (req, res) => {
   try {
-    console.log('[WHATSAPP][AO_ENVIAR] Body:', JSON.stringify(req.body, null, 2));
+    console.log('[WHATSAPP][AO_ENVIAR] recebido');
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -39,15 +39,12 @@ router.post('/webhook-whatsapp', async (req, res) => {
       console.log('🔔 [Webhook] Body recebido como texto:', rawBody);
       try {
         body = JSON.parse(rawBody);
-        console.log('🔔 [Webhook] Body convertido para JSON:', body);
       } catch (e) {
         console.log('❌ [Webhook] Falha ao converter body para JSON:', e.message);
         return res.status(400).json({ error: 'Body inválido, não é JSON.' });
       }
     } else {
-      console.log('🔔 [Webhook] Body bruto:', body);
     }
-    console.log('🔔 [Webhook] Dados recebidos:', body);
 
     // Ignora eventos de mensagens enviadas por nós mesmos (ex: confirmação de entrega)
     if (body.fromMe === true) {
@@ -320,7 +317,6 @@ router.post('/webhook-autentique', async (req, res) => {
     const event = body.event || body.type;
     const document = body.document || body.data?.document || body.data;
     console.log('[Autentique Webhook] event:', event, '| doc id:', document?.id);
-    console.log('[Autentique Webhook] body completo:', JSON.stringify(body, null, 2));
 
     if ((event === 'document.finished' || event === 'signature_accepted') && document?.id) {
       // Não confia no payload do webhook em si (sem verificação de assinatura/segredo) —

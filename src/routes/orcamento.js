@@ -57,7 +57,6 @@ async function comSaldo(orcamento) {
 // Criar (ou atualizar, se já existir um orçamento pra esse agendamento) orçamento
 router.post('/', async (req, res) => {
   try {
-    console.log('[ORCAMENTO] Dados recebidos:', req.body);
     const { agendamento_id, paciente_id, status, procedimentos, valores, observacoes } = req.body;
     // Buscar clinica_id do agendamento
     let clinica_id = null;

@@ -8,6 +8,7 @@ const router = express.Router();
 const multer = require('multer');
 const multerS3 = require('multer-s3');
 const despesasController = require('../controllers/despesasController');
+const { validarNovaDespesa } = require('../middleware/validacao');
 const { verificarToken } = require('../middleware/authMiddleware');
 const { verificarPermissaoModulo } = require('../middleware/permissaoMiddleware');
 const { s3, S3_BUCKET } = require('../config/s3');
@@ -47,7 +48,7 @@ router.get('/', despesasController.listarDespesas);
  * @desc    Cria uma nova despesa
  * @access  Private
  */
-router.post('/', despesasController.criarDespesa);
+router.post('/', validarNovaDespesa, despesasController.criarDespesa);
 
 /**
  * @route   GET /api/despesas/:id

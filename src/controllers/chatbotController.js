@@ -8,7 +8,6 @@ const ChatbotConversa = require('../models/ChatbotConversa');
 exports.saveChatMessage = async (req, res) => {
   try {
     console.log('Recebendo mensagem do chatbot...');
-    console.log('Body recebido:', req.body);
     const { user_id, mensagem, sender, contador_mensagens, bloqueado } = req.body;
     if (!user_id || !mensagem) {
       console.log('Dados obrigatórios ausentes:', { user_id, mensagem });

@@ -3,3 +3,11 @@ node_modules/
 uploads/*
 !uploads/.gitignore
 *.log
+
+# Dados de clientes (migrações) — nunca versionar
+backup_*.json
+pagamentos_*.json
+scripts/_simples/
+scripts/_backup_*.json
+*.csv
+*.zip

@@ -127,7 +127,6 @@ router.post('/', async (req, res) => {
     observacoes,
     orcamento_id
   } = req.body;
-  console.log('🔔 [Agendamento] Dados recebidos:', req.body);
   try {
     // Procedimento é obrigatório; sem isso o banco recusa por chave estrangeira com uma mensagem técnica
     const idsInformados = (Array.isArray(procedimentos) && procedimentos.length ? procedimentos : [procedimento_id]).filter(Boolean);

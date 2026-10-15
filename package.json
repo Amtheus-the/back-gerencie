@@ -7,7 +7,10 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "setup-db": "node scripts/createDatabase.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "migrate": "node scripts/migrate.js up",
+    "migrate:status": "node scripts/migrate.js status",
+    "migrate:down": "node scripts/migrate.js down"
   },
   "keywords": [
     "tributario",
@@ -24,13 +27,15 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "express-rate-limit": "^8.7.1",
     "express-validator": "^7.0.1",
     "googleapis": "^173.0.0",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "multer-s3": "^2.10.0",
     "mysql2": "^3.22.0",
-    "nodemailer": "^9.0.1",
+    "nodemailer": "^10.1.1",
     "openai": "^4.104.0",
     "pdfkit": "^0.19.1",
     "sequelize": "^6.35.0"

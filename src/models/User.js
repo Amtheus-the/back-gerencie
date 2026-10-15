@@ -7,11 +7,14 @@ const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
 const bcrypt = require('bcryptjs');
 
+const { cifrar, decifrar } = require('../utils/cripto');
 const User = sequelize.define('User', {
   senha_ecac: {
     type: DataTypes.STRING,
     allowNull: true,
-    comment: 'Senha do eCAC para automação do robô'
+    comment: 'Senha do eCAC para automação do robô (gravada criptografada, AES-256-GCM)',
+    get() { return decifrar(this.getDataValue('senha_ecac')); },
+    set(valor) { this.setDataValue('senha_ecac', cifrar(valor)); }
   },
   role: {
     type: DataTypes.ENUM('dentista', 'secretaria', 'dentista_parceiro'),

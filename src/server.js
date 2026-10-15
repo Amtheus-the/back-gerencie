@@ -5,6 +5,8 @@
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const dotenv = require('dotenv');
 
 // Carrega variáveis de ambiente
@@ -50,6 +52,12 @@ const apiTokenRoutes = require('./routes/apiTokenRoutes');
 const webhookOpenRoutes = require('./routes/webhookOpenRoutes');
 const app = express();
 
+// Atrás do proxy da hospedagem: sem isso o IP de todo mundo seria o do proxy (e o limite de requisições valeria pra todos juntos)
+app.set('trust proxy', 1);
+// Cabeçalhos de segurança (HSTS, nosniff, etc.). CSP fica de fora porque a API só devolve JSON/arquivos
+// e o app roda em outro domínio; CORP cross-origin pra os arquivos/PDFs da API continuarem abrindo no app.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+
 // CORS deve ser o primeiro middleware — antes de qualquer rota
 const corsOptions = {
   origin: [
@@ -62,20 +70,67 @@ const corsOptions = {
 };
 app.options('*', cors(corsOptions));
 app.use(cors(corsOptions));
+
+// Verificação de saúde (pra serviço de monitoramento/uptime): sem login, sem dados
+app.get('/api/health', async (req, res) => {
+  try {
+    await sequelize.authenticate();
+    res.json({ status: 'ok', db: 'ok', time: new Date().toISOString() });
+  } catch (e) {
+    res.status(503).json({ status: 'erro', db: 'indisponivel', time: new Date().toISOString() });
+  }
+});
+
+// Limite de requisições por IP. Folgado de propósito (clínica inteira atrás do mesmo IP não pode ser barrada);
+// webhooks e o conector MCP têm tratamento próprio e ficam de fora.
+const SEM_LIMITE = ['/webhook', '/asaas/webhook', '/mcp', '/open', '/health'];
+const limiteGeral = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 3000,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS' || SEM_LIMITE.some((p) => req.path.startsWith(p)),
+  message: { success: false, message: 'Muitas requisições. Aguarde alguns minutos e tente de novo.' },
+});
+// Login, cadastro, esqueci/redefinir senha: tentativas por IP (além do bloqueio por conta que já existe no login)
+const limiteAuth = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: (req) => req.method !== 'POST' || req.path === '/logout',
+  message: { success: false, message: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.' },
+});
+app.use('/api', limiteGeral);
+app.use('/api/auth', limiteAuth);
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 // Webhook WhatsApp 100% aberto
 app.use('/api/webhook-open-whatsapp', webhookOpenRoutes);
-// Webhook Asaas 100% aberto (sem JWT)
-const asaasWebhookRouter = require('express').Router();
+// Webhook do Asaas (rota sem JWT, então nada do payload é aceito sem conferência):
+//  1) se ASAAS_WEBHOOK_TOKEN estiver definido, exige o mesmo valor no header "asaas-access-token"
+//     (o token é configurado no painel do Asaas, em Integrações > Webhooks);
+//  2) sempre confirma o pagamento/assinatura direto na API do Asaas antes de mudar o plano.
+const crypto = require('crypto');
+const { confirmarPagamento, confirmarAssinaturaEncerrada } = require('./services/asaasStatusService');
 const { Clinica: ClinicaWebhook } = require('./models');
+const tokenWebhookConfere = (recebido) => {
+  const esperado = process.env.ASAAS_WEBHOOK_TOKEN;
+  if (!esperado) return true; // ainda não configurado: a conferência na API (2) continua valendo
+  const a = Buffer.from(String(recebido || ''));
+  const b = Buffer.from(esperado);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
 app.post('/api/asaas/webhook', async (req, res) => {
-  const { event, payment, subscription } = req.body;
+  if (!tokenWebhookConfere(req.headers['asaas-access-token'])) {
+    return res.status(401).json({ error: 'Token inválido' });
+  }
+  const { event, payment, subscription } = req.body || {};
   try {
     if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
       const customerId = payment?.customer;
-      if (customerId) {
+      if (customerId && await confirmarPagamento(payment?.id, customerId)) {
         const clinica = await ClinicaWebhook.findOne({ where: { asaasCustomerId: customerId } });
         if (clinica) {
           const vencimento = new Date();
@@ -86,7 +141,7 @@ app.post('/api/asaas/webhook', async (req, res) => {
     }
     if (event === 'SUBSCRIPTION_DELETED' || event === 'SUBSCRIPTION_EXPIRED') {
       const subId = subscription?.id;
-      if (subId) {
+      if (subId && await confirmarAssinaturaEncerrada(subId)) {
         const clinica = await ClinicaWebhook.findOne({ where: { asaasSubscriptionId: subId } });
         if (clinica) await clinica.update({ plano: 'FREE', asaasSubscriptionId: null });
       }
@@ -94,7 +149,7 @@ app.post('/api/asaas/webhook', async (req, res) => {
     res.json({ received: true });
   } catch (err) {
     console.error('[WEBHOOK ASAAS]', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erro ao processar webhook' });
   }
 });
 // Rotas 100% abertas, sem JWT
