@@ -10,10 +10,7 @@ const { verificarToken } = require('../middleware/authMiddleware');
 // Todas as rotas requerem autenticação
 router.use(verificarToken);
 
-// GET /api/chat/insights - Insight proativo da Aline baseado nos dados financeiros reais
-router.get('/insights', chatController.getInsights);
-
-// POST /api/chat/message - Envia mensagem para a Aline
+// POST /api/chat/message - Dúvida sobre o uso do sistema (a Aline não dá orientação tributária)
 router.post('/message', chatController.sendMessage);
 
 // POST /api/chat/consultar-dedutibilidade - Consulta fiscal sobre dedutibilidade
