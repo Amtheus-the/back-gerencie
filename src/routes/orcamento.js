@@ -3,6 +3,7 @@ const router = express.Router();
 const PDFDocument = require('pdfkit');
 const { Orcamento, Agendamento, Paciente, Faturamento, Clinica, Procedimento } = require('../models');
 const { verificarToken } = require('../middleware/authMiddleware');
+const { calcularDetalhes, descreverPagamento, resumoDentes } = require('../services/orcamentoCalculo');
 
 router.use(verificarToken);
 
@@ -19,7 +20,22 @@ function normalizarOrcamento(orcamento) {
     ...json,
     procedimentos: parseJsonSeNecessario(json.procedimentos, []),
     valores: parseJsonSeNecessario(json.valores, {}),
+    detalhes: parseJsonSeNecessario(json.detalhes, null),
   };
+}
+
+// Orçamento sempre dentro da clínica de quem está logado (id de outra clínica = não encontrado)
+const buscarOrcamentoDaClinica = (id, req) => Orcamento.findOne({ where: { id, clinica_id: req.user.clinicaId } });
+
+// Se vier `detalhes` (orçamento detalhado), o servidor recalcula procedimentos/valores/total
+// e confere que todos os procedimentos são da clínica.
+async function aplicarDetalhes(detalhes, clinicaId) {
+  const calc = calcularDetalhes(detalhes);
+  const encontrados = await Procedimento.count({ where: { id: calc.procedimentos, clinicaId } });
+  if (encontrados !== calc.procedimentos.length) {
+    const e = new Error('Um dos procedimentos do orçamento não existe mais. Atualize a página e tente de novo.'); e.status = 400; throw e;
+  }
+  return calc;
 }
 
 // Soma os valores negociados no orçamento (campo JSON { procedimentoId: valor })
@@ -57,7 +73,7 @@ async function comSaldo(orcamento) {
 // Criar (ou atualizar, se já existir um orçamento pra esse agendamento) orçamento
 router.post('/', async (req, res) => {
   try {
-    const { agendamento_id, paciente_id, status, procedimentos, valores, observacoes } = req.body;
+    let { agendamento_id, paciente_id, status, procedimentos, valores, observacoes, detalhes } = req.body;
     // Buscar clinica_id do agendamento
     let clinica_id = null;
     if (agendamento_id) {
@@ -69,6 +85,15 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Não foi possível determinar a clínica do orçamento.' });
     }
 
+    // O paciente precisa ser da clínica de quem está salvando
+    const pacienteDaClinica = await Paciente.count({ where: { id: paciente_id, clinica_id } });
+    if (!pacienteDaClinica) return res.status(404).json({ error: 'Paciente não encontrado.' });
+
+    if (detalhes) {
+      const calc = await aplicarDetalhes(detalhes, clinica_id);
+      procedimentos = calc.procedimentos; valores = calc.valores; detalhes = calc.detalhes;
+    }
+
     // Já existe um orçamento pra esse agendamento? Atualiza em vez de criar
     // outro — sem isso, cada "Salvar" gerava uma linha nova e a tela podia
     // reabrir mostrando uma versão antiga/vazia por acaso.
@@ -77,7 +102,7 @@ router.post('/', async (req, res) => {
       : null;
 
     if (orcamento) {
-      await orcamento.update({ status, procedimentos, valores, observacoes });
+      await orcamento.update({ status, procedimentos, valores, observacoes, ...(detalhes && { detalhes }) });
     } else {
       orcamento = await Orcamento.create({
         agendamento_id,
@@ -86,12 +111,13 @@ router.post('/', async (req, res) => {
         status,
         procedimentos,
         valores,
-        observacoes
+        observacoes,
+        detalhes: detalhes || null
       });
     }
-    console.log('[ORCAMENTO] Salvo com sucesso:', orcamento?.toJSON ? orcamento.toJSON() : orcamento);
     res.status(201).json(await comSaldo(orcamento));
   } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message });
     console.error('[ORCAMENTO] Erro ao inserir:', err);
     res.status(500).json({ error: err.message });
   }
@@ -128,7 +154,7 @@ router.get('/paciente/:paciente_id', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const orcamento = await Orcamento.findByPk(id);
+    const orcamento = await buscarOrcamentoDaClinica(id, req);
     if (!orcamento) return res.status(404).json({ error: 'Orçamento não encontrado' });
     res.json(await comSaldo(orcamento));
   } catch (err) {
@@ -140,7 +166,7 @@ router.get('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const orcamento = await Orcamento.findByPk(id);
+    const orcamento = await buscarOrcamentoDaClinica(id, req);
     if (!orcamento) return res.status(404).json({ error: 'Orçamento não encontrado' });
     await orcamento.destroy();
     res.status(204).send();
@@ -155,17 +181,23 @@ router.delete('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, procedimentos, valores, observacoes } = req.body;
-    const orcamento = await Orcamento.findByPk(id);
+    let { status, procedimentos, valores, observacoes, detalhes } = req.body;
+    const orcamento = await buscarOrcamentoDaClinica(id, req);
     if (!orcamento) return res.status(404).json({ error: 'Orçamento não encontrado' });
+    if (detalhes) {
+      const calc = await aplicarDetalhes(detalhes, orcamento.clinica_id);
+      procedimentos = calc.procedimentos; valores = calc.valores; detalhes = calc.detalhes;
+    }
     const campos = {};
     if (status !== undefined) campos.status = status;
     if (procedimentos !== undefined) campos.procedimentos = procedimentos;
     if (valores !== undefined) campos.valores = valores;
     if (observacoes !== undefined) campos.observacoes = observacoes;
+    if (detalhes) campos.detalhes = detalhes;
     await orcamento.update(campos);
     res.json(await comSaldo(orcamento));
   } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -226,42 +258,126 @@ function montarPdfOrcamento({ orcamento, clinica, paciente, procedimentosMap, de
     }
     doc.moveDown(1);
 
-    // Cabeçalho da tabela
-    const colValorX = margem + larguraUtil - 100;
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827');
-    doc.text('Procedimento', margem, doc.y);
-    doc.text('Total', colValorX, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
-    doc.moveDown(0.8);
+    const detalhes = orcamento.detalhes && Array.isArray(orcamento.detalhes.itens) ? orcamento.detalhes : null;
+    const rodapeY = doc.page.height - 150;
+    const novaPaginaSePreciso = (altura) => { if (doc.y + altura > rodapeY) { doc.addPage(); doc.x = margem; doc.y = margem; } };
 
-    const itens = (orcamento.procedimentos || []).map(id => ({
-      nome: procedimentosMap[id]?.nome || 'Procedimento',
-      valor: orcamento.valores?.[id] || 0,
-    }));
+    if (detalhes) {
+      // ── Orçamento detalhado: procedimento (com dentes) | qtd | valor unitário | subtotal ──
+      const colQtdX = margem + larguraUtil * 0.52;
+      const colUnitX = margem + larguraUtil * 0.60;
+      const colSubX = margem + larguraUtil * 0.80;
+      const wDesc = colQtdX - margem - 16;
+      const cabecalho = () => {
+        const y = doc.y;
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#6b7280');
+        doc.text('PROCEDIMENTO', margem + 6, y, { width: wDesc });
+        doc.text('QTD', colQtdX, y, { width: 36, align: 'center' });
+        doc.text('VALOR UNIT.', colUnitX, y, { width: colSubX - colUnitX - 8, align: 'right' });
+        doc.text('SUBTOTAL', colSubX, y, { width: margem + larguraUtil - colSubX - 6, align: 'right' });
+        doc.moveTo(margem, y + 14).lineTo(margem + larguraUtil, y + 14).strokeColor('#d1d5db').stroke();
+        doc.y = y + 20; doc.x = margem;
+      };
+      cabecalho();
 
-    itens.forEach(item => {
-      const y = doc.y;
-      const altura = 30;
-      doc.roundedRect(margem, y, larguraUtil, altura, 4).strokeColor('#d1d5db').stroke();
-      doc.font('Helvetica').fontSize(10).fillColor('#1f2937')
-        .text(item.nome, margem + 12, y + 10, { width: colValorX - margem - 24 });
-      doc.text(fmtBRL(item.valor), colValorX, y + 10, { width: 100, align: 'right' });
-      doc.y = y + altura + 8;
-      doc.x = margem;
-    });
+      detalhes.itens.forEach((it) => {
+        const nome = procedimentosMap[it.procedimentoId]?.nome || it.nome || 'Procedimento';
+        const dentes = it.cobranca === 'dente' && it.dentes?.length ? resumoDentes(it.dentes) : '';
+        doc.font('Helvetica-Bold').fontSize(10);
+        const hNome = doc.heightOfString(nome, { width: wDesc });
+        doc.font('Helvetica').fontSize(8.5);
+        const hDentes = dentes ? doc.heightOfString(dentes, { width: wDesc }) + 2 : 0;
+        const altura = Math.max(hNome + hDentes + 14, 30);
+        if (doc.y + altura > rodapeY) { doc.addPage(); doc.x = margem; doc.y = margem; cabecalho(); }
+        const y = doc.y;
+        doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827').text(nome, margem + 6, y + 7, { width: wDesc });
+        if (dentes) doc.font('Helvetica').fontSize(8.5).fillColor('#6b7280').text(dentes, margem + 6, y + 7 + hNome + 2, { width: wDesc });
+        doc.font('Helvetica').fontSize(10).fillColor('#1f2937');
+        doc.text(String(it.quantidade || 1), colQtdX, y + 7, { width: 36, align: 'center' });
+        doc.text(fmtBRL(it.valorUnitario), colUnitX, y + 7, { width: colSubX - colUnitX - 8, align: 'right' });
+        doc.font('Helvetica-Bold').text(fmtBRL(it.subtotal), colSubX, y + 7, { width: margem + larguraUtil - colSubX - 6, align: 'right' });
+        doc.moveTo(margem, y + altura).lineTo(margem + larguraUtil, y + altura).strokeColor('#eef0f3').stroke();
+        doc.y = y + altura + 2; doc.x = margem;
+      });
 
-    doc.moveDown(0.5);
-    const valorTotal = itens.reduce((s, i) => s + (parseFloat(i.valor) || 0), 0);
-    doc.font('Helvetica-Bold').fontSize(11).fillColor('#111827')
-      .text(`Valor Total: ${fmtBRL(valorTotal)}`, margem, doc.y, { width: larguraUtil, align: 'right' });
+      // totais
+      novaPaginaSePreciso(150);
+      doc.moveDown(0.8);
+      const xRot = margem + larguraUtil * 0.55;
+      const wRot = larguraUtil * 0.25;
+      const wVal = margem + larguraUtil - (xRot + wRot) - 6;
+      const linhaTotal = (rotulo, valor, opcoes = {}) => {
+        const y = doc.y;
+        doc.font(opcoes.negrito ? 'Helvetica-Bold' : 'Helvetica').fontSize(opcoes.tamanho || 10).fillColor(opcoes.cor || '#374151');
+        doc.text(rotulo, xRot, y, { width: wRot, align: 'right' });
+        doc.text(valor, xRot + wRot, y, { width: wVal, align: 'right' });
+        doc.y = y + (opcoes.tamanho || 10) + 7; doc.x = margem;
+      };
+      linhaTotal('Subtotal', fmtBRL(detalhes.subtotal));
+      if (detalhes.desconto?.emReais > 0) {
+        const pct = detalhes.desconto.tipo === 'percentual' ? ` (${String(detalhes.desconto.valor).replace('.', ',')}%)` : '';
+        linhaTotal(`Desconto${pct}`, `- ${fmtBRL(detalhes.desconto.emReais)}`, { cor: '#dc2626' });
+      }
+      doc.moveTo(xRot, doc.y).lineTo(margem + larguraUtil, doc.y).strokeColor('#d1d5db').stroke();
+      doc.y += 6;
+      linhaTotal('TOTAL', fmtBRL(detalhes.total), { negrito: true, tamanho: 13, cor: '#111827' });
+
+      // condições de pagamento e validade
+      doc.moveDown(0.8);
+      novaPaginaSePreciso(90);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827').text('Condições de pagamento', margem, doc.y);
+      doc.font('Helvetica').fontSize(10).fillColor('#374151').text(descreverPagamento(detalhes), margem, doc.y + 2, { width: larguraUtil });
+      if (detalhes.validadeDias) {
+        const base = orcamento.createdAt ? new Date(orcamento.createdAt) : new Date();
+        const ate = new Date(base.getTime() + detalhes.validadeDias * 86400000);
+        doc.moveDown(0.6);
+        doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827').text('Validade: ', margem, doc.y, { continued: true });
+        doc.font('Helvetica').fillColor('#374151').text(`${detalhes.validadeDias} dias (até ${ate.toLocaleDateString('pt-BR')})`);
+      }
+      if (orcamento.observacoes) {
+        doc.moveDown(0.6);
+        doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827').text('Observações', margem, doc.y);
+        doc.font('Helvetica').fontSize(10).fillColor('#374151').text(orcamento.observacoes, margem, doc.y + 2, { width: larguraUtil });
+      }
+    } else {
+      // ── Orçamento antigo (só procedimento + valor) ──
+      const colValorX = margem + larguraUtil - 100;
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#111827');
+      doc.text('Procedimento', margem, doc.y);
+      doc.text('Total', colValorX, doc.y - doc.currentLineHeight(), { width: 100, align: 'right' });
+      doc.moveDown(0.8);
+
+      const itens = (orcamento.procedimentos || []).map(id => ({
+        nome: procedimentosMap[id]?.nome || 'Procedimento',
+        valor: orcamento.valores?.[id] || 0,
+      }));
+
+      itens.forEach(item => {
+        const y = doc.y;
+        const altura = 30;
+        doc.roundedRect(margem, y, larguraUtil, altura, 4).strokeColor('#d1d5db').stroke();
+        doc.font('Helvetica').fontSize(10).fillColor('#1f2937')
+          .text(item.nome, margem + 12, y + 10, { width: colValorX - margem - 24 });
+        doc.text(fmtBRL(item.valor), colValorX, y + 10, { width: 100, align: 'right' });
+        doc.y = y + altura + 8;
+        doc.x = margem;
+      });
+
+      doc.moveDown(0.5);
+      const valorTotal = itens.reduce((s, i) => s + (parseFloat(i.valor) || 0), 0);
+      doc.font('Helvetica-Bold').fontSize(11).fillColor('#111827')
+        .text(`Valor Total: ${fmtBRL(valorTotal)}`, margem, doc.y, { width: larguraUtil, align: 'right' });
+    }
 
     // Assinaturas
+    if (doc.y + 60 > doc.page.height - 100) { doc.addPage(); doc.y = margem; }
     const yAssinatura = Math.max(doc.y + 60, doc.page.height - 130);
     const largColuna = (larguraUtil - 40) / 2;
     doc.moveTo(margem, yAssinatura).lineTo(margem + largColuna, yAssinatura).strokeColor('#9ca3af').stroke();
     doc.moveTo(margem + largColuna + 40, yAssinatura).lineTo(margem + largColuna * 2 + 40, yAssinatura).strokeColor('#9ca3af').stroke();
     doc.font('Helvetica').fontSize(10).fillColor('#374151');
     doc.text(paciente?.nome || '', margem, yAssinatura + 8, { width: largColuna, align: 'center' });
-    doc.text(dentistaNome || '', margem + largColuna + 40, yAssinatura + 8, { width: largColuna, align: 'center' });
+    doc.text(orcamento.detalhes?.profissional || dentistaNome || '', margem + largColuna + 40, yAssinatura + 8, { width: largColuna, align: 'center' });
 
     doc.end();
   });
@@ -271,7 +387,7 @@ function montarPdfOrcamento({ orcamento, clinica, paciente, procedimentosMap, de
 router.get('/:id/pdf', async (req, res) => {
   try {
     const { id } = req.params;
-    const orcamentoRaw = await Orcamento.findByPk(id);
+    const orcamentoRaw = await buscarOrcamentoDaClinica(id, req);
     if (!orcamentoRaw) return res.status(404).json({ error: 'Orçamento não encontrado' });
     const orcamento = normalizarOrcamento(orcamentoRaw);
 

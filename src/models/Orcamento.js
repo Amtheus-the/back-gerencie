@@ -35,6 +35,11 @@ const Orcamento = sequelize.define('Orcamento', {
   observacoes: {
     type: DataTypes.TEXT,
     allowNull: true
+  },
+  detalhes: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Orçamento detalhado: itens (procedimento + dentes + valores), desconto, pagamento, validade e profissional'
   }
 }, {
   tableName: 'orcamentos',
