@@ -192,6 +192,26 @@ router.get('/assinar/:token', async (req, res) => {
   }
 });
 
+// Confere um código de verificação impresso no comprovante (mostra só o mínimo: título, data e nome mascarado)
+router.get('/verificar/:codigo', async (req, res) => {
+  try {
+    const { DocumentoPaciente, Termo } = require('../models');
+    const { Op } = require('sequelize');
+    const hex = String(req.params.codigo || '').replace(/[^0-9a-fA-F]/g, '').toLowerCase();
+    if (hex.length !== 16) return res.status(400).json({ valido: false, error: 'Código inválido.' });
+    const doc = await DocumentoPaciente.findOne({
+      where: { hashDocumento: { [Op.like]: `${hex}%` }, status: 'assinado' },
+      include: [{ model: Termo, as: 'termo', attributes: ['titulo'] }],
+    });
+    if (!doc) return res.status(404).json({ valido: false });
+    const partes = String(doc.nomeAssinante || '').trim().split(/\s+/);
+    const mascarado = partes.length > 1 ? `${partes[0]} ${partes[partes.length - 1][0]}.` : partes[0];
+    res.json({ valido: true, documento: doc.termo?.titulo, assinadoEm: doc.assinadoEm, assinante: mascarado, metodo: doc.metodoAssinatura });
+  } catch (e) {
+    res.status(500).json({ valido: false, error: 'Erro ao verificar.' });
+  }
+});
+
 // Preenche os marcadores {{CAMPO: ...}} / {{SIMNAO: ...}} do conteúdo com as respostas do paciente,
 // na mesma ordem em que aparecem no texto (respostas é um array ordenado).
 function preencherRespostasNoConteudo(html, respostas) {
@@ -209,7 +229,7 @@ function preencherRespostasNoConteudo(html, respostas) {
 router.post('/assinar/:token', async (req, res) => {
   try {
     const { DocumentoPaciente, Termo } = require('../models');
-    const { nomeAssinante, cpfAssinante, aceito, respostas } = req.body;
+    const { nomeAssinante, cpfAssinante, aceito, respostas, metodo, assinaturaImagem } = req.body;
 
     if (!aceito) return res.status(400).json({ error: 'Você precisa aceitar os termos para assinar.' });
     if (!nomeAssinante?.trim()) return res.status(400).json({ error: 'Nome é obrigatório.' });
@@ -218,7 +238,7 @@ router.post('/assinar/:token', async (req, res) => {
     if (!doc) return res.status(404).json({ error: 'Documento não encontrado.' });
     if (doc.status === 'assinado') return res.status(400).json({ error: 'Documento já foi assinado.' });
 
-    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+    const ip = req.ip || req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
     const temPerguntas = Array.isArray(respostas) && respostas.length > 0 && doc.termo;
 
     // Termo sem perguntas (responsabilidade "simples" enviado por este link): mantém o
@@ -244,6 +264,62 @@ router.post('/assinar/:token', async (req, res) => {
       .replace(/\{\{PACIENTE_NOME\}\}/g, nomeAssinante.trim())
       .replace(/\{\{PACIENTE_CPF\}\}/g, cpfAssinante?.trim() || '')
       .replace(/\{\{DATA\}\}/g, new Date().toLocaleDateString('pt-BR'));
+    // ── Assinatura com o dedo na tela (só anamnese): não passa pela Autentique ──
+    if (metodo === 'dedo') {
+      if (doc.termo.tipo !== 'anamnese') {
+        return res.status(400).json({ error: 'A assinatura com o dedo está disponível apenas para anamnese.' });
+      }
+      const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(assinaturaImagem || ''));
+      const png = m ? Buffer.from(m[1], 'base64') : null;
+      if (!png || png.length > 400 * 1024 || png.length < 1200 || png.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') {
+        return res.status(400).json({ error: 'Assinatura inválida ou em branco. Desenhe sua assinatura e tente de novo.' });
+      }
+
+      const crypto = require('crypto');
+      const { gerarPDFComAssinatura, formatarCodigo } = require('../controllers/termoController');
+      const { s3, S3_BUCKET, S3_REGION } = require('../config/s3');
+      const agora = new Date();
+      const hashDocumento = crypto.createHash('sha256').update(`${doc.termo.titulo}\n${conteudoPreenchido}`).digest('hex');
+      const hashAssinatura = crypto.createHash('sha256').update(png).digest('hex');
+      const userAgent = String(req.headers['user-agent'] || '').slice(0, 300);
+      const cpfLimpo = cpfAssinante?.trim() || null;
+
+      const pdfAssinado = await gerarPDFComAssinatura(conteudoPreenchido, doc.termo.titulo, {
+        assinaturaPng: png,
+        comprovante: {
+          documentoId: doc.id,
+          nome: nomeAssinante.trim(),
+          cpf: cpfLimpo,
+          dataHora: agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+          ip, userAgent, hashDocumento, hashAssinatura,
+          codigo: formatarCodigo(hashDocumento),
+        },
+      });
+
+      // As provas precisam ficar guardadas: se não salvar o PDF e a imagem, a assinatura não vale.
+      let pdfUrl; let assinaturaUrl;
+      try {
+        const base = `anamneses/${doc.id}`;
+        const keyPdf = `${base}/assinada-${agora.getTime()}.pdf`;
+        const keyPng = `${base}/assinatura-${agora.getTime()}.png`;
+        await s3.upload({ Bucket: S3_BUCKET, Key: keyPdf, Body: pdfAssinado, ContentType: 'application/pdf' }).promise();
+        await s3.upload({ Bucket: S3_BUCKET, Key: keyPng, Body: png, ContentType: 'image/png' }).promise();
+        pdfUrl = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${keyPdf}`;
+        assinaturaUrl = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${keyPng}`;
+      } catch (s3Err) {
+        console.error('[Assinar/dedo] Erro ao guardar o PDF assinado:', s3Err.message);
+        return res.status(500).json({ error: 'Não foi possível guardar o documento assinado. Tente novamente em instantes.' });
+      }
+
+      await doc.update({
+        status: 'assinado', respostas,
+        nomeAssinante: nomeAssinante.trim(), cpfAssinante: cpfLimpo, ipAssinante: ip,
+        assinadoEm: agora, metodoAssinatura: 'dedo', userAgent, hashDocumento,
+        pdfPreenchidoUrl: pdfUrl, assinaturaUrl,
+      });
+      return res.json({ success: true, metodo: 'dedo', assinadoEm: agora, codigo: formatarCodigo(hashDocumento) });
+    }
+
     const pdfBuffer = await gerarPDF(conteudoPreenchido, doc.termo.titulo);
 
     const dadosAtualizacao = {

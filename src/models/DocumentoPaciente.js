@@ -15,6 +15,10 @@ const DocumentoPaciente = sequelize.define('DocumentoPaciente', {
   enviadoVia: { type: DataTypes.ENUM('whatsapp', 'email', 'link'), defaultValue: 'link', field: 'enviado_via' },
   autentiqueId: { type: DataTypes.STRING(100), allowNull: true, field: 'autentique_id' },
   respostas: { type: DataTypes.JSON, allowNull: true, comment: 'Respostas do paciente às perguntas do termo (CAMPO/SIMNAO)' },
+  metodoAssinatura: { type: DataTypes.STRING(20), allowNull: true, field: 'metodo_assinatura', comment: "'dedo' (desenhada na tela) | 'autentique' | 'digitada'" },
+  userAgent: { type: DataTypes.STRING(300), allowNull: true, field: 'user_agent', comment: 'Navegador/aparelho de quem assinou (prova)' },
+  hashDocumento: { type: DataTypes.STRING(64), allowNull: true, field: 'hash_documento', comment: 'SHA-256 do conteúdo assinado (prova de integridade)' },
+  assinaturaUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'assinatura_url', comment: 'Imagem PNG da assinatura desenhada' },
   pdfPreenchidoUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'pdf_preenchido_url', comment: 'URL do PDF final com as respostas preenchidas' },
 }, { tableName: 'documentos_paciente', timestamps: true, underscored: true });
 

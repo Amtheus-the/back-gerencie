@@ -40,6 +40,68 @@ async function gerarPDF(htmlContent, titulo) {
   });
 }
 
+// PDF da anamnese assinada com o dedo: texto preenchido + assinatura desenhada + página de comprovante
+// (data/hora, IP, aparelho, hash do conteúdo e código de verificação).
+function formatarCodigo(hash) {
+  return hash.slice(0, 16).toUpperCase().match(/.{4}/g).join('-');
+}
+
+async function gerarPDFComAssinatura(htmlContent, titulo, { assinaturaPng, comprovante }) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 60, size: 'A4' });
+    const buffers = [];
+    doc.on('data', (chunk) => buffers.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', reject);
+
+    doc.fontSize(14).font('Helvetica-Bold').text(titulo, { align: 'center' });
+    doc.moveDown();
+    doc.fontSize(11).font('Helvetica').text(stripHtml(htmlContent), { align: 'justify', lineGap: 4 });
+
+    // bloco da assinatura (vai pra próxima página se não couber)
+    if (doc.y > 600) doc.addPage();
+    doc.moveDown(2);
+    const yBloco = doc.y;
+    doc.fontSize(10).font('Helvetica-Bold').text('Assinatura do paciente', 60, yBloco);
+    try { doc.image(assinaturaPng, 60, yBloco + 16, { fit: [240, 90] }); } catch (e) { /* PNG validado antes */ }
+    doc.moveTo(60, yBloco + 112).lineTo(320, yBloco + 112).strokeColor('#94a3b8').stroke();
+    doc.fontSize(10).font('Helvetica').fillColor('#000')
+      .text(comprovante.nome, 60, yBloco + 117)
+      .text(comprovante.cpf ? `CPF: ${comprovante.cpf}` : '', 60, doc.y);
+
+    // página de comprovação
+    doc.addPage();
+    doc.fontSize(15).font('Helvetica-Bold').fillColor('#0f172a').text('Comprovante de assinatura eletrônica', { align: 'center' });
+    doc.moveDown(1.2);
+    const linhas = [
+      ['Documento', titulo],
+      ['Identificador', comprovante.documentoId],
+      ['Signatário', comprovante.nome],
+      ['CPF informado', comprovante.cpf || 'não informado'],
+      ['Data e hora (Brasília)', comprovante.dataHora],
+      ['Método', 'Assinatura manuscrita desenhada na tela do dispositivo'],
+      ['Endereço IP', comprovante.ip || 'não identificado'],
+      ['Dispositivo', comprovante.userAgent || 'não identificado'],
+      ['Hash SHA-256 do conteúdo', comprovante.hashDocumento],
+      ['Hash SHA-256 da assinatura', comprovante.hashAssinatura],
+      ['Código de verificação', comprovante.codigo],
+    ];
+    linhas.forEach(([rotulo, valor]) => {
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#475569').text(rotulo.toUpperCase());
+      doc.fontSize(10.5).font('Helvetica').fillColor('#0f172a').text(String(valor), { lineGap: 2 });
+      doc.moveDown(0.6);
+    });
+    doc.moveDown(0.8);
+    doc.fontSize(9).font('Helvetica').fillColor('#475569').text(
+      'Este documento foi assinado eletronicamente pelo signatário acima, por meio de assinatura manuscrita digitalizada, ' +
+      'com registro de evidências de autoria e integridade (data, hora, endereço IP, dispositivo e impressão digital SHA-256 do conteúdo), ' +
+      'nos termos da Lei nº 14.063/2020 e da MP nº 2.200-2/2001, art. 10, § 2º. ' +
+      'Qualquer alteração no conteúdo após a assinatura altera o hash e é detectável.',
+      { align: 'justify', lineGap: 3 });
+    doc.end();
+  });
+}
+
 async function criarDocumentoAutentique(pdfBuffer, titulo, signatario, opcoes = {}) {
   const form = new FormData();
 
@@ -319,4 +381,4 @@ const sincronizarDocumento = async (req, res) => {
   }
 };
 
-module.exports = { listar, criar, atualizar, deletar, clonar, enviar, listarDocumentos, sincronizarDocumento, gerarPDF, criarDocumentoAutentique };
+module.exports = { listar, criar, atualizar, deletar, clonar, enviar, listarDocumentos, sincronizarDocumento, gerarPDF, gerarPDFComAssinatura, formatarCodigo, criarDocumentoAutentique };
