@@ -578,6 +578,7 @@ exports.getPerfilCompletoClinica = async (req, res) => {
     });
 
     // Buscar despesas
+    // Sem limite: a tela agrupa por mês e o total/contagem precisam refletir todas as despesas
     const despesas = await Despesa.findAll({
       where: { clinicaId },
       include: [
@@ -587,8 +588,7 @@ exports.getPerfilCompletoClinica = async (req, res) => {
           attributes: ['nome']
         }
       ],
-      order: [['data', 'DESC']],
-      limit: 50
+      order: [['data', 'DESC']]
     });
 
     // Buscar documentos
