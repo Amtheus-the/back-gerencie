@@ -14,7 +14,10 @@ const filtroPaciente = (req) => ({ clinica_id: req.user.clinicaId });
 // banco, normaliza sempre na leitura.
 function normalizarOdontograma(raw) {
   if (raw && raw.dentes && Array.isArray(raw.procedimentos)) {
-    return raw; // já no formato v2
+    // já no formato v2 — devolve uma CÓPIA. Se devolvesse o mesmo objeto, quem altera (push/delete)
+    // e chama update() faria o Sequelize comparar o objeto com ele mesmo, achar que nada mudou
+    // e não gravar (o procedimento aparecia na tela e sumia ao atualizar a página).
+    return JSON.parse(JSON.stringify(raw));
   }
   const dentes = {};
   const procedimentos = [];
@@ -434,6 +437,7 @@ class PacienteController {
       if (!paciente) return res.status(404).json({ error: 'Paciente não encontrado' });
       let dados = paciente.esteticaData || {};
       if (typeof dados === 'string') { try { dados = JSON.parse(dados); } catch { dados = {}; } }
+      dados = JSON.parse(JSON.stringify(dados || {})); // cópia: mudar no lugar faz o Sequelize não gravar
       if (status === null) {
         delete dados[regiao];
       } else {
