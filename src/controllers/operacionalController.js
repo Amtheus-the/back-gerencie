@@ -714,14 +714,16 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
     if (!clinica.focusNfeToken) {
       return res.status(422).json({ success: false, message: 'Esta clínica ainda não foi cadastrada como empresa emissora na Focus NFe. Rode scripts/cadastrar_empresa_focus.js antes de emitir.' });
     }
-    if (!clinica.itemListaServico || !clinica.codigoMunicipioIbge) {
+    const nacional = !!clinica.nfseNacional; // Ambiente Nacional (/v2/nfsen)
+    const semServico = nacional ? (!clinica.itemListaServico && !clinica.codigoTributacaoNacional) : !clinica.itemListaServico;
+    if (semServico || !clinica.codigoMunicipioIbge) {
       return res.status(422).json({
         success: false,
-        message: `Complete os dados fiscais da clínica antes de emitir. Faltando: ${[!clinica.itemListaServico && 'Item da Lista de Serviço (LC 116)', !clinica.codigoMunicipioIbge && 'Código IBGE do Município'].filter(Boolean).join(', ')}.`,
+        message: `Complete os dados fiscais da clínica antes de emitir. Faltando: ${[semServico && 'Item da Lista de Serviço (LC 116)', !clinica.codigoMunicipioIbge && 'Código IBGE do Município'].filter(Boolean).join(', ')}.`,
       });
     }
 
-    const { buscarCodigoMunicipioIbge } = require('../services/focusNfeService');
+    const { buscarCodigoMunicipioIbge, montarDpsNacional } = require('../services/focusNfeService');
     async function montarEnderecoTomador({ logradouro, numero, complemento, bairro, cidade, estado, cep }) {
       if (!logradouro || !cidade || !estado) return null;
       const codigoMunicipioTomador = await buscarCodigoMunicipioIbge(cidade, estado);
@@ -756,7 +758,17 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
           cep: paciente?.cep,
         });
 
-    const nfsePayload = {
+    const nfsePayload = nacional ? montarDpsNacional({
+      clinica,
+      faturamento,
+      descricao: faturamento.observacoes || clinica.descricaoPadraoNota || faturamento.descricao,
+      tomador: {
+        documento: documentoTomador,
+        nome: nomeTomador,
+        email: paciente?.email || faturamento.email,
+        endereco: tomadorEndereco,
+      },
+    }) : {
       data_emissao: new Date(faturamento.data || Date.now()).toISOString(),
       natureza_operacao: '1',
       optante_simples_nacional: ['1', '2'].includes(String(clinica.regimeTributario)),
@@ -785,9 +797,9 @@ exports.emitirNotaFiscalAdmin = async (req, res) => {
 
     const { emitirNfse, aguardarAutorizacaoNfse } = require('../services/focusNfeService');
     const ref = faturamento.id;
-    await emitirNfse(clinica.focusNfeToken, ref, nfsePayload);
+    await emitirNfse(clinica.focusNfeToken, ref, nfsePayload, { nacional });
 
-    const resultado = await aguardarAutorizacaoNfse(clinica.focusNfeToken, ref);
+    const resultado = await aguardarAutorizacaoNfse(clinica.focusNfeToken, ref, { nacional });
 
     if (resultado.status === 'autorizado') {
       await faturamento.update({ notaEmitida: true, numeroNota: ref, statusNota: 'autorizado', erroNota: null });
@@ -848,7 +860,7 @@ exports.cancelarNotaFiscalAdmin = async (req, res) => {
     }
 
     const { cancelarNfse } = require('../services/focusNfeService');
-    await cancelarNfse(clinicaDona.focusNfeToken, nfseId, motivo || 'Cancelamento solicitado pelo administrador.');
+    await cancelarNfse(clinicaDona.focusNfeToken, nfseId, motivo || 'Cancelamento solicitado pelo administrador.', { nacional: !!clinicaDona.nfseNacional });
 
     await faturamento.update({ notaEmitida: false, numeroNota: null });
 
@@ -986,7 +998,7 @@ exports.visualizarNotaManual = async (req, res) => {
     }
 
     const { consultarNfse } = require('../services/focusNfeService');
-    const consulta = await consultarNfse(clinicaDona.focusNfeToken, faturamento.numeroNota);
+    const consulta = await consultarNfse(clinicaDona.focusNfeToken, faturamento.numeroNota, { nacional: !!clinicaDona.nfseNacional });
     if (!consulta.url_danfse) {
       return res.status(400).json({ success: false, message: `Nota ainda sem PDF disponível (status: ${consulta.status}).` });
     }

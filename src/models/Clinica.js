@@ -281,6 +281,19 @@ const Clinica = sequelize.define('Clinica', {
     field: 'focus_nfe_token',
     comment: 'Token de produção da empresa na Focus NFe (devolvido no cadastro da empresa) — usado pra emitir/consultar/cancelar NFS-e dessa clínica'
   },
+  nfseNacional: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    field: 'nfse_nacional',
+    comment: 'true = emite pelo Ambiente Nacional (/v2/nfsen, layout DPS). Obrigatório p/ Simples Nacional desde 01/11/2026. Só ligar depois de ligar "Ambiente da NFSe Nacional" e desligar "NFSe" no painel da Focus.'
+  },
+  codigoTributacaoNacional: {
+    type: DataTypes.STRING(8),
+    allowNull: true,
+    field: 'codigo_tributacao_nacional',
+    comment: 'cTribNac (6 dígitos, ex: 041201 = Odontologia) — se vazio, deriva do item da LC 116'
+  },
   // ─── Marketing ───
   mensagemAniversario: {
     type: DataTypes.TEXT,

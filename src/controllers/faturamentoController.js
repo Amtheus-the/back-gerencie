@@ -480,10 +480,12 @@ exports.emitirNotaFiscal = async (req, res) => {
         redirect: '/perfil',
       });
     }
-    if (!clinica.itemListaServico || !clinica.codigoMunicipioIbge) {
+    const nacional = !!clinica.nfseNacional; // Ambiente Nacional (/v2/nfsen) — obrigatório p/ Simples desde 01/11/2026
+    const semServico = nacional ? (!clinica.itemListaServico && !clinica.codigoTributacaoNacional) : !clinica.itemListaServico;
+    if (semServico || !clinica.codigoMunicipioIbge) {
       return res.status(422).json({
         success: false,
-        message: `Complete os dados fiscais da clínica antes de emitir. Faltando: ${[!clinica.itemListaServico && 'Item da Lista de Serviço (LC 116)', !clinica.codigoMunicipioIbge && 'Código IBGE do Município'].filter(Boolean).join(', ')}.`,
+        message: `Complete os dados fiscais da clínica antes de emitir. Faltando: ${[semServico && 'Item da Lista de Serviço (LC 116)', !clinica.codigoMunicipioIbge && 'Código IBGE do Município'].filter(Boolean).join(', ')}.`,
         redirect: '/perfil',
       });
     }
@@ -527,8 +529,21 @@ exports.emitirNotaFiscal = async (req, res) => {
           cep: paciente?.cep,
         });
 
+    const { montarDpsNacional } = require('../services/focusNfeService');
+    const descricaoNota = faturamento.observacoes || clinica.descricaoPadraoNota || faturamento.descricao;
+
     // Montar payload no formato da Focus NFe
-    const nfsePayload = {
+    const nfsePayload = nacional ? montarDpsNacional({
+      clinica,
+      faturamento,
+      descricao: descricaoNota,
+      tomador: {
+        documento: documentoTomador,
+        nome: nomeTomador,
+        email: paciente?.email || faturamento.email,
+        endereco: tomadorEndereco,
+      },
+    }) : {
       data_emissao: new Date(faturamento.data || Date.now()).toISOString(),
       natureza_operacao: '1',
       optante_simples_nacional: ['1', '2'].includes(String(clinica.regimeTributario)),
@@ -567,9 +582,9 @@ exports.emitirNotaFiscal = async (req, res) => {
 
     const { emitirNfse, aguardarAutorizacaoNfse } = require('../services/focusNfeService');
     const ref = faturamento.id;
-    await emitirNfse(clinica.focusNfeToken, ref, nfsePayload);
+    await emitirNfse(clinica.focusNfeToken, ref, nfsePayload, { nacional });
 
-    const resultado = await aguardarAutorizacaoNfse(clinica.focusNfeToken, ref);
+    const resultado = await aguardarAutorizacaoNfse(clinica.focusNfeToken, ref, { nacional });
     console.log('✅ Resposta Focus NFe:', JSON.stringify(resultado, null, 2));
 
     if (resultado.status === 'autorizado') {
@@ -663,7 +678,7 @@ exports.cancelarNotaFiscal = async (req, res) => {
     console.log(`🗑️ Cancelando nota ${faturamento.numeroNota}...`);
 
     const { cancelarNfse } = require('../services/focusNfeService');
-    const resultado = await cancelarNfse(clinica.focusNfeToken, faturamento.numeroNota, motivo);
+    const resultado = await cancelarNfse(clinica.focusNfeToken, faturamento.numeroNota, motivo, { nacional: !!clinica.nfseNacional });
 
     console.log('✅ Cancelamento resposta:', JSON.stringify(resultado, null, 2));
 
@@ -714,7 +729,7 @@ exports.baixarNotaFiscal = async (req, res) => {
 
     console.log(`📄 Baixando PDF da nota ${faturamento.numeroNota}...`);
     const { consultarNfse } = require('../services/focusNfeService');
-    const consulta = await consultarNfse(clinica.focusNfeToken, faturamento.numeroNota);
+    const consulta = await consultarNfse(clinica.focusNfeToken, faturamento.numeroNota, { nacional: !!clinica.nfseNacional });
     if (!consulta.url_danfse) {
       return res.status(400).json({ success: false, message: `Nota ainda sem PDF disponível (status: ${consulta.status}).` });
     }
@@ -760,7 +775,7 @@ exports.statusNotaFiscal = async (req, res) => {
     }
 
     const { consultarNfse } = require('../services/focusNfeService');
-    const consulta = await consultarNfse(clinica.focusNfeToken, faturamento.numeroNota);
+    const consulta = await consultarNfse(clinica.focusNfeToken, faturamento.numeroNota, { nacional: !!clinica.nfseNacional });
 
     if (consulta.status === 'autorizado') {
       await faturamento.update({ notaEmitida: true, statusNota: 'autorizado', erroNota: null });

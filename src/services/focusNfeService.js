@@ -78,18 +78,102 @@ async function definirProximoNumeroRps(empresaId, proximoNumero) {
  * Emite a NFS-e. `ref` é um identificador único que a gente escolhe (usamos
  * o id do faturamento) — é ele que depois consulta/cancela a nota.
  */
-async function emitirNfse(clinicaToken, ref, payload) {
-  const { data } = await axios.post(`${BASE_URL}/nfse?ref=${encodeURIComponent(ref)}`, payload, {
+// `nacional: true` → Ambiente Nacional (/v2/nfsen, layout DPS); senão a NFS-e municipal (/v2/nfse).
+const rota = (nacional) => (nacional ? 'nfsen' : 'nfse');
+
+async function emitirNfse(clinicaToken, ref, payload, { nacional = false } = {}) {
+  const { data } = await axios.post(`${BASE_URL}/${rota(nacional)}?ref=${encodeURIComponent(ref)}`, payload, {
     headers: { ...authHeader(clinicaToken), 'Content-Type': 'application/json' },
   });
   return data;
 }
 
-async function consultarNfse(clinicaToken, ref) {
-  const { data } = await axios.get(`${BASE_URL}/nfse/${encodeURIComponent(ref)}`, {
+async function consultarNfse(clinicaToken, ref, { nacional = false } = {}) {
+  const { data } = await axios.get(`${BASE_URL}/${rota(nacional)}/${encodeURIComponent(ref)}`, {
     headers: authHeader(clinicaToken),
   });
   return data;
+}
+
+/**
+ * Monta o payload da NFS-e Nacional (DPS) — formato PLANO da Focus (POST /v2/nfsen).
+ * Campos conforme o exemplo oficial da Focus e campos.focusnfe.com.br/nfse_nacional/EmissaoDPSXml.html.
+ *
+ * ATENÇÃO — pontos ainda NÃO validados contra a prefeitura (confirmar na 1ª emissão real):
+ *  • numero_dps/serie_dps: omitidos (o exemplo da Focus também omite; a Focus numera).
+ *  • grupo IBS/CBS (leiaute 2): a rejeição de 01/11/2026 cita o leiaute 2; os valores abaixo
+ *    (CST 000 / cClassTrib 000001) são o padrão "tributação integral" e podem precisar de ajuste.
+ */
+function derivarCodigoTributacaoNacional(clinica) {
+  if (clinica.codigoTributacaoNacional) return String(clinica.codigoTributacaoNacional).replace(/\D/g, '');
+  // item da LC 116 ("4.12", "0412", "04.12") → item(2) + subitem(2) + desdobro "01"
+  // só aceita formatos inequívocos ("4.12", "04.12", "0412"); códigos municipais (ex: SP "02692") não derivam
+  const item = String(clinica.itemListaServico || '').trim();
+  if (/^\d{6}$/.test(item)) return item; // já é um cTribNac
+  const m = item.match(/^(\d{1,2})\.(\d{2})$/) || item.match(/^(\d{2})(\d{2})$/);
+  if (!m || Number(m[1]) < 1 || Number(m[1]) > 40) return null;
+  return `${m[1].padStart(2, '0')}${m[2]}01`;
+}
+
+function dataHoraBrasilia(date = new Date()) {
+  const br = new Date(date.getTime() - 3 * 3600 * 1000);
+  return `${br.toISOString().slice(0, 19)}-0300`;
+}
+
+function montarDpsNacional({ clinica, faturamento, tomador, descricao }) {
+  const regime = String(clinica.regimeTributario || '');
+  const opcaoSimples = regime === '4' ? 2 : ['1', '2'].includes(regime) ? 3 : 1; // 1 não optante · 2 MEI · 3 ME/EPP
+  const cTribNac = derivarCodigoTributacaoNacional(clinica);
+  if (!cTribNac) {
+    const e = new Error('Informe o Código de Tributação Nacional da clínica (ex: 041201 para Odontologia) ou o Item da Lista de Serviço (LC 116).');
+    e.status = 422;
+    throw e;
+  }
+  const ibge = Number(clinica.codigoMunicipioIbge);
+  const hojeBR = dataHoraBrasilia().slice(0, 10);
+  const competencia = String(faturamento.data || hojeBR).slice(0, 10);
+  const documentoPrestador = String(clinica.cnpj || '').replace(/\D/g, '');
+
+  const dps = {
+    // 1 min no passado: a DPS não pode ter data/hora posterior ao relógio do servidor da prefeitura
+    data_emissao: dataHoraBrasilia(new Date(Date.now() - 60 * 1000)),
+    data_competencia: competencia > hojeBR ? hojeBR : competencia,
+    codigo_municipio_emissora: ibge,
+    cnpj_prestador: documentoPrestador,
+    ...(clinica.inscricaoMunicipal ? { inscricao_municipal_prestador: String(clinica.inscricaoMunicipal).replace(/\D/g, '') } : {}),
+    codigo_opcao_simples_nacional: opcaoSimples,
+    ...(opcaoSimples === 3 ? { regime_tributario_simples_nacional: regime === '2' ? 2 : 1 } : {}),
+    regime_especial_tributacao: 0,
+
+    ...(tomador.documento.length === 14 ? { cnpj_tomador: tomador.documento } : { cpf_tomador: tomador.documento }),
+    razao_social_tomador: tomador.nome,
+    ...(tomador.email ? { email_tomador: tomador.email } : {}),
+    ...(tomador.endereco ? {
+      codigo_municipio_tomador: Number(tomador.endereco.codigo_municipio),
+      cep_tomador: tomador.endereco.cep,
+      logradouro_tomador: tomador.endereco.logradouro,
+      numero_tomador: tomador.endereco.numero,
+      ...(tomador.endereco.complemento ? { complemento_tomador: tomador.endereco.complemento } : {}),
+      bairro_tomador: tomador.endereco.bairro,
+    } : {}),
+
+    codigo_municipio_prestacao: ibge,
+    codigo_tributacao_nacional_iss: cTribNac,
+    descricao_servico: String(descricao || '').slice(0, 1000),
+    valor_servico: parseFloat(faturamento.valor),
+    ...(clinica.aliquotaIssqn != null ? { percentual_aliquota_relativa_municipio: parseFloat(clinica.aliquotaIssqn) } : {}),
+    tributacao_iss: 1,        // 1 = operação tributável
+    tipo_retencao_iss: 1,     // 1 = ISS não retido
+    indicador_total_tributacao: '0',
+
+    // Reforma tributária — leiaute 2 (ver aviso no topo da função)
+    finalidade_emissao: 0,
+    consumidor_final: 1,
+    indicador_destinatario: 0,
+    ibs_cbs_situacao_tributaria: '000',
+    ibs_cbs_classificacao_tributaria: '000001',
+  };
+  return dps;
 }
 
 const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -105,19 +189,19 @@ const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * backend sempre responde antes disso, não importa quanto cada consulta
  * individual demorou.
  */
-async function aguardarAutorizacaoNfse(clinicaToken, ref, { orcamentoMs = 6000, intervaloMs = 1000 } = {}) {
+async function aguardarAutorizacaoNfse(clinicaToken, ref, { orcamentoMs = 6000, intervaloMs = 1000, nacional = false } = {}) {
   const inicio = Date.now();
   let ultimaConsulta = null;
   while (Date.now() - inicio < orcamentoMs) {
     await esperar(intervaloMs);
-    ultimaConsulta = await consultarNfse(clinicaToken, ref);
+    ultimaConsulta = await consultarNfse(clinicaToken, ref, { nacional });
     if (ultimaConsulta.status !== 'processando_autorizacao') return ultimaConsulta;
   }
   return ultimaConsulta;
 }
 
-async function cancelarNfse(clinicaToken, ref, justificativa) {
-  const { data } = await axios.delete(`${BASE_URL}/nfse/${encodeURIComponent(ref)}`, {
+async function cancelarNfse(clinicaToken, ref, justificativa, { nacional = false } = {}) {
+  const { data } = await axios.delete(`${BASE_URL}/${rota(nacional)}/${encodeURIComponent(ref)}`, {
     headers: { ...authHeader(clinicaToken), 'Content-Type': 'application/json' },
     data: { justificativa: justificativa || 'Cancelamento solicitado pelo prestador.' },
   });
@@ -156,4 +240,5 @@ async function buscarCodigoMunicipioIbge(cidade, uf) {
 module.exports = {
   cadastrarEmpresa, definirProximoNumeroRps, emitirNfse, consultarNfse,
   aguardarAutorizacaoNfse, cancelarNfse, buscarCodigoMunicipioIbge,
+  montarDpsNacional, derivarCodigoTributacaoNacional,
 };
