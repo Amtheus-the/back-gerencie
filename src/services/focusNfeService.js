@@ -176,8 +176,12 @@ function montarDpsNacional({ clinica, faturamento, tomador, descricao }) {
     ...(clinica.aliquotaIssqn != null ? { percentual_aliquota_relativa_municipio: parseFloat(clinica.aliquotaIssqn) } : {}),
     tributacao_iss: 1,        // 1 = operação tributável
     tipo_retencao_iss: 1,     // 1 = ISS não retido
-    // ME/EPP (e MEI) NÃO podem informar o indicador de total de tributos — a prefeitura rejeita
-    ...(opcaoSimples === 1 ? { indicador_total_tributacao: '0' } : {}),
+    // Grupo "totTrib" (Lei 12.741, tributos aproximados) é obrigatório no XML. ME/EPP e MEI NÃO podem usar o
+    // indicador (a prefeitura rejeita) — informam o percentual aproximado do Simples Nacional (pTotTribSN).
+    // Padrão 0, como na NFS-e que a Mak Tech já emitiu pelo portal (totais aproximados R$ 0,00).
+    ...(opcaoSimples === 1
+      ? { indicador_total_tributacao: '0' }
+      : { percentual_total_tributos_simples_nacional: Number(clinica.percentualTotalTributosSn) || 0 }),
 
     // Reforma tributária — leiaute 2 (ver aviso no topo da função)
     finalidade_emissao: 0,
