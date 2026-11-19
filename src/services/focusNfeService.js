@@ -176,7 +176,8 @@ function montarDpsNacional({ clinica, faturamento, tomador, descricao }) {
     ...(clinica.aliquotaIssqn != null ? { percentual_aliquota_relativa_municipio: parseFloat(clinica.aliquotaIssqn) } : {}),
     tributacao_iss: 1,        // 1 = operação tributável
     tipo_retencao_iss: 1,     // 1 = ISS não retido
-    indicador_total_tributacao: '0',
+    // ME/EPP (e MEI) NÃO podem informar o indicador de total de tributos — a prefeitura rejeita
+    ...(opcaoSimples === 1 ? { indicador_total_tributacao: '0' } : {}),
 
     // Reforma tributária — leiaute 2 (ver aviso no topo da função)
     finalidade_emissao: 0,
