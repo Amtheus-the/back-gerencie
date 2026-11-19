@@ -169,6 +169,9 @@ function montarDpsNacional({ clinica, faturamento, tomador, descricao }) {
     // Reforma tributária — leiaute 2 (ver aviso no topo da função)
     finalidade_emissao: 0,
     consumidor_final: 1,
+    // cIndOp (Anexo VII): saúde (item 04 da LC 116) = serviço físico sobre a pessoa no estabelecimento do
+    // prestador; demais serviços (ex: software) = "demais serviços onerosos" (domicílio do adquirente).
+    codigo_indicador_operacao: cTribNac.startsWith('04') ? '030101' : '100301',
     indicador_destinatario: 0,
     ibs_cbs_situacao_tributaria: '000',
     ibs_cbs_classificacao_tributaria: '000001',
