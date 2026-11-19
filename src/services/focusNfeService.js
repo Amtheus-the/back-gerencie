@@ -120,6 +120,17 @@ function dataHoraBrasilia(date = new Date()) {
   return `${br.toISOString().slice(0, 19)}-0300`;
 }
 
+// Com o grupo IBS/CBS (leiaute 2) o NBS é obrigatório ("É obrigatório informar na DPS um item da NBS...").
+// Mapa cTribNac (item+subitem da LC 116) → NBS 9 dígitos. Fontes: buscadorncm.com.br (NBS ↔ LC 116) — conferir
+// na tabela oficial do Portal Nacional se a prefeitura rejeitar a combinação.
+const NBS_POR_ITEM_LC116 = {
+  '0101': '115022000', '0102': '115022000', '0104': '115022000', '0107': '115022000', // software sob encomenda
+  '0412': '123012300', // serviços odontológicos
+};
+function derivarNbs(cTribNac) {
+  return NBS_POR_ITEM_LC116[String(cTribNac).slice(0, 4)] || null;
+}
+
 function montarDpsNacional({ clinica, faturamento, tomador, descricao }) {
   const regime = String(clinica.regimeTributario || '');
   const opcaoSimples = regime === '4' ? 2 : ['1', '2'].includes(regime) ? 3 : 1; // 1 não optante · 2 MEI · 3 ME/EPP
@@ -159,6 +170,7 @@ function montarDpsNacional({ clinica, faturamento, tomador, descricao }) {
 
     codigo_municipio_prestacao: ibge,
     codigo_tributacao_nacional_iss: cTribNac,
+    ...(derivarNbs(cTribNac) ? { codigo_nbs: derivarNbs(cTribNac) } : {}),
     descricao_servico: String(descricao || '').slice(0, 1000),
     valor_servico: parseFloat(faturamento.valor),
     ...(clinica.aliquotaIssqn != null ? { percentual_aliquota_relativa_municipio: parseFloat(clinica.aliquotaIssqn) } : {}),
